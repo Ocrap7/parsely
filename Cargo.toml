@@ -1,0 +1,3 @@
+[workspace]
+members = ["parsely_lexer"]
+resolver = "2"

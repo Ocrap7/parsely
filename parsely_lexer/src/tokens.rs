@@ -1,22 +1,22 @@
 macro_rules! define_tokens {
-    ($vis:vis enum $token_enum:ident { $($struct_name:ident = $st:expr),*, $(,)* }) => {
+    ($vis:vis enum $token_enum:ident { $($struct_name:ident = $st:tt),*, $(,)* }) => {
         $(
             #[derive(Debug, PartialEq, Eq)]
             $vis struct $struct_name(pub(crate) $crate::Span);
 
             impl $struct_name {
-                pub fn from_span_start(start: $crate::Position) -> Token {
-                    Token::$struct_name($struct_name($crate::Span {
+                pub fn from_span_start(start: $crate::Position) -> $token_enum {
+                    $token_enum::$struct_name($struct_name($crate::Span {
                         end: $crate::Position {
                             line: start.line,
-                            column: start.column + $st.len(),
+                            column: start.column + $struct_name::len(),
                         },
                         start,
                     }))
                 }
 
                 pub fn len() -> usize {
-                    $st.len()
+                    stringify!($st).len()
                 }
             }
         )*
@@ -29,6 +29,7 @@ macro_rules! define_tokens {
             Bool(Bool),
             String(String),
             Char(Char),
+            Group(Group),
            $(
                 $struct_name($struct_name)
            ),*
@@ -43,6 +44,7 @@ macro_rules! define_tokens {
                     $token_enum::Bool(i) => i.span.len(),
                     $token_enum::String(i) => i.span.len(),
                     $token_enum::Char(i) => i.span.len(),
+                    $token_enum::Group(_) => 0,
                     $(
                         $token_enum::$struct_name(_) => $struct_name::len()
                     ),*
@@ -53,8 +55,22 @@ macro_rules! define_tokens {
                 self.len() == 0
             }
         }
+
+        #[macro_export]
+        macro_rules! Token {
+            $(
+                [$st] => {};
+            )*
+        }
     };
 }
+
+// #[macro_export]
+// macro_rules! Token {
+//     () => {
+
+//     };
+// }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Ident {
@@ -63,8 +79,8 @@ pub struct Ident {
 }
 
 impl Ident {
-    pub fn from_span_start(raw: &[char], start: crate::Position) -> Token {
-        Token::Ident(Ident {
+    pub fn from_span_start(raw: &[char], start: crate::Position) -> Tokens {
+        Tokens::Ident(Ident {
             value: raw.iter().collect(),
             span: crate::Span {
                 end: crate::Position {
@@ -84,8 +100,8 @@ pub struct Int {
 }
 
 impl Int {
-    pub fn from_span_start(raw: &[char], start: crate::Position) -> Token {
-        Token::Int(Int {
+    pub fn from_span_start(raw: &[char], start: crate::Position) -> Tokens {
+        Tokens::Int(Int {
             value: raw
                 .iter()
                 .collect::<std::string::String>()
@@ -109,8 +125,8 @@ pub struct Float {
 }
 
 impl Float {
-    pub fn from_span_start(raw: &[char], start: crate::Position) -> Token {
-        Token::Float(Float {
+    pub fn from_span_start(raw: &[char], start: crate::Position) -> Tokens {
+        Tokens::Float(Float {
             value: raw
                 .iter()
                 .collect::<std::string::String>()
@@ -134,8 +150,8 @@ pub struct Bool {
 }
 
 impl Bool {
-    pub fn from_value(value: bool, raw: &[char], start: crate::Position) -> Token {
-        Token::Bool(Bool {
+    pub fn from_value(value: bool, raw: &[char], start: crate::Position) -> Tokens {
+        Tokens::Bool(Bool {
             value,
             span: crate::Span {
                 end: crate::Position {
@@ -147,8 +163,8 @@ impl Bool {
         })
     }
 
-    pub fn from_span_start(raw: &str, start: crate::Position) -> Token {
-        Token::Bool(Bool {
+    pub fn from_span_start(raw: &str, start: crate::Position) -> Tokens {
+        Tokens::Bool(Bool {
             value: raw.parse().expect("Unexpected value in bool!"),
             span: crate::Span {
                 end: crate::Position {
@@ -168,8 +184,8 @@ pub struct String {
 }
 
 impl String {
-    pub fn from_span_start(raw: &str, start: crate::Position) -> Token {
-        Token::String(String {
+    pub fn from_span_start(raw: &str, start: crate::Position) -> Tokens {
+        Tokens::String(String {
             value: raw[1..raw.len() - 1].to_string(),
             span: crate::Span {
                 end: crate::Position {
@@ -189,8 +205,8 @@ pub struct Char {
 }
 
 impl Char {
-    pub fn from_span_start(raw: &str, start: crate::Position) -> Token {
-        Token::Char(Char {
+    pub fn from_span_start(raw: &str, start: crate::Position) -> Tokens {
+        Tokens::Char(Char {
             value: raw[1..raw.len() - 1].to_string().chars().next().unwrap(),
             span: crate::Span {
                 end: crate::Position {
@@ -204,71 +220,84 @@ impl Char {
 }
 
 define_tokens! {
-    pub enum Token {
+    pub enum Tokens {
         // Keyword
-        Const = "const",
-        Continue = "continue",
-        Break = "break",
-        Else = "else",
-        Enum = "enum",
-        Export = "export",
-        External = "external",
-        For = "for",
-        If = "if",
-        Match = "match",
-        Nones = "none",
-        Persist = "persist",
-        Return = "return",
-        Struct = "struct",
-        Typedef = "typedef",
-        Typeof = "typeof",
-        Void = "void",
-        While = "while",
+        Const = const,
+        Continue = continue,
+        Break = break,
+        Else = else,
+        Enum = enum,
+        Export = export,
+        External = external,
+        For = for,
+        If = if,
+        Match = match,
+        Nones = none,
+        Persist = persist,
+        Return = return,
+        Struct = struct,
+        Typedef = typedef,
+        Typeof = typeof,
+        Void = void,
+        While = while,
 
         // Punctuation
-        Semi = ";",
-        Colon = ":",
-        Comma = ",",
-        Quote = "\"",
-        Pound = "#",
-        SingleQuote = "'",
-        OpenBrace = "{",
-        CloseBrace = "}",
-        OpenBracket = "[",
-        CloseBracket = "]",
-        OpenParen = "(",
-        CloseParen = ")",
+        Semi = ;,
+        Colon = :,
+        Comma = ,,
+        Pound = #,
+        // OpenBrace = {,
+        // CloseBrace = },
+        // OpenBracket = [,
+        // CloseBracket = ],
+        // OpenParen = (,
+        // CloseParen = ),
 
         // Operators
-        And = "&",
-        AndEq = "&=",
-        Assign = "=",
-        Eq = "==",
-        Dot = ".",
-        Gt = ">",
-        GtEq = ">=",
-        LeftShift = "<<",
-        LeftShiftEq = "<<=",
-        LogicalAnd = "&&",
-        LogicalOr = "||",
-        Lt = "<",
-        LtEq = "<=",
-        Minus = "-",
-        MinusEq = "-=",
-        Not = "!",
-        NotEq = "!=",
-        Or = "|",
-        Plus = "+",
-        PlusEq = "+=",
-        Rem = "%",
-        RemEq = "%=",
-        RightShift = ">>",
-        RightShiftEq = ">>=",
-        Slash = "/",
-        SlashEq = "/=",
-        Star = "*",
-        StarEq = "*=",
-        Xor = "^",
-        XorEq = "^=",
+        And = &,
+        AndEq = &=,
+        Assign = =,
+        Eq = ==,
+        Dot = .,
+        Gt = >,
+        GtEq = >=,
+        LeftShift = <<,
+        LeftShiftEq = <<=,
+        LogicalAnd = &&,
+        LogicalOr = ||,
+        Lt = <,
+        LtEq = <=,
+        Minus = -,
+        MinusEq = -=,
+        Not = !,
+        NotEq = !=,
+        Or = |,
+        Plus = +,
+        PlusEq = +=,
+        Rem = %,
+        RemEq = %=,
+        RightShift = >>,
+        RightShiftEq = >>=,
+        Slash = /,
+        SlashEq = /=,
+        Star = *,
+        StarEq = *=,
+        Xor = ^,
+        XorEq = ^=,
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Group {
+    pub open: crate::Span,
+    pub close: crate::Span,
+    pub bracket: GroupBracket,
+    pub tokens: Vec<Tokens>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GroupBracket {
+    Paren,
+    Brace,
+    Bracket,
 }

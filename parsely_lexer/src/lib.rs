@@ -1,18 +1,28 @@
-use std::arch::asm;
-
 use tokens::*;
 
 pub mod tokens;
 
 /// Represents a single position in a source file
-/// 
+///
 /// `line` line in the file (starting at 0)
 /// `column` in the line (starting at 0)
-/// 
+///
 #[derive(Debug, PartialEq, Eq)]
 pub struct Position {
     pub line: usize,
     pub column: usize,
+}
+
+impl Position {
+    pub fn to_span(self, len: usize) -> Span {
+        Span {
+            end: Position {
+                line: self.line,
+                column: self.column + len,
+            },
+            start: self,
+        }
+    }
 }
 
 /// Represents a range in a file
@@ -50,31 +60,30 @@ impl Span {
 }
 
 /// Main lexing struct. This is an iterator
-/// 
+///
 /// ## Example
-/// 
+///
 /// ```ignore
 /// use parsely_lexer::{span, Lexer, tokens::*};
-/// 
-/// let input = r"int32 i;";
-/// 
-/// let mut tokens = Lexer::run(input.as_bytes());
-/// 
+///
+/// let input = "int32 i;";
+///
+/// let tokens = Lexer::run(input.as_bytes());
+///
 /// assert_eq!(
-///     tokens.next(),
-///     Some(Token::Ident(Ident {
-///         value: "int32".to_string(),
-///         span: span!(0:0-5)
-///     }))
+///     &[
+///         Token::Ident(Ident {
+///             value: "int32".to_string(),
+///             span: span!(0:0-5)
+///         }),
+///         Token::Ident(Ident {
+///             value: "i".to_string(),
+///             span: span!(0:6-7)
+///         }),
+///         Token::Semi(Semi(span!(0:7-8))),
+///     ],
+///     tokens.as_slice(),
 /// );
-/// assert_eq!(
-///     tokens.next(),
-///     Some(Token::Ident(Ident {
-///         value: "i".to_string(),
-///         span: span!(0:6-7)
-///     }))
-/// );
-/// assert_eq!(tokens.next(), Some(Token::Semi(Semi(span!(0:7-8)))));
 /// ```
 pub struct Lexer {
     line: usize,
@@ -85,19 +94,19 @@ pub struct Lexer {
 
 impl Lexer {
     /// Returns a `Lexer` as an iterator
-    /// 
+    ///
     /// `buffer` should be a u8 ref
-    pub fn run(buffer: impl AsRef<[u8]>) -> impl Iterator<Item = Token> {
+    pub fn run(buffer: impl AsRef<[u8]>) -> Vec<Tokens> {
         let str = std::str::from_utf8(buffer.as_ref()).expect("Unable to decode buffer as utf8!");
 
-        let lexer = Lexer {
+        let mut lexer = Lexer {
             line: 0,
             column: 0,
             index: 0,
             chars: str.chars().collect(),
         };
 
-        lexer.flatten()
+        lexer.collect(None)
     }
 
     /// Returns a position from the current state of the lexer.
@@ -108,11 +117,22 @@ impl Lexer {
         }
     }
 
+    fn collect(&mut self, group: Option<GroupBracket>) -> Vec<Tokens> {
+        let mut tokens = Vec::new();
+        while let Some(token) = self.next(group) {
+            if let Some(token) = token {
+                tokens.push(token)
+            }
+        }
+
+        tokens
+    }
+
     /// Trys and parse keyword, ident, or number
-    /// 
-    /// Returns `None` if the end of the buffer has been reached. 
-    /// 
-    fn try_keyword_or_ident(&mut self) -> Option<Token> {
+    ///
+    /// Returns `None` if the end of the buffer has been reached.
+    ///
+    fn try_keyword_or_ident(&mut self) -> Option<Tokens> {
         let slice = self.chars.get(self.index..)?;
 
         let int_ind = slice
@@ -152,7 +172,6 @@ impl Lexer {
             return token;
         }
 
-        unsafe { asm!("nop; hlt"); }
         let token = match kw_slice {
             /* true */
             ['t', 'r', 'u', 'e'] => Some(Bool::from_value(true, slice, self.make_position())),
@@ -211,18 +230,77 @@ impl Lexer {
     }
 }
 
-impl Iterator for Lexer {
-    type Item = Option<Token>;
-
-    /// Try and get next token. 
-    /// 
+impl Lexer {
+    /// Try and get next token.
+    ///
     /// If a valid token was found, `Some` is returned. Otherwise, if no tokens are left, `None` is returned.
-    /// 
+    ///
     /// White space is ignored
-    fn next(&mut self) -> Option<Self::Item> {
-        let char = self.chars.get(self.index)?;
-        let char_1 = self.chars.get(self.index + 1);
-        let char_2 = self.chars.get(self.index + 2);
+    fn next(&mut self, group: Option<GroupBracket>) -> Option<Option<Tokens>> {
+        let char = *self.chars.get(self.index)?;
+        let char_1 = self.chars.get(self.index + 1).copied();
+        let char_2 = self.chars.get(self.index + 2).copied();
+
+        match (char, group) {
+            ('(', _) => {
+                let open = self.make_position().to_span(1);
+                self.index += 1;
+                self.column += 1;
+
+                let tokens = self.collect(Some(GroupBracket::Paren));
+
+                let close = self.make_position().to_span(1);
+                self.index += 1;
+                self.column += 1;
+
+                return Some(Some(Tokens::Group(Group {
+                    open,
+                    close,
+                    bracket: GroupBracket::Paren,
+                    tokens,
+                })));
+            }
+            (')', Some(GroupBracket::Paren)) => return None,
+            ('[', _) => {
+                let open = self.make_position().to_span(1);
+                self.index += 1;
+                self.column += 1;
+
+                let tokens = self.collect(Some(GroupBracket::Bracket));
+
+                let close = self.make_position().to_span(1);
+                self.index += 1;
+                self.column += 1;
+
+                return Some(Some(Tokens::Group(Group {
+                    open,
+                    close,
+                    bracket: GroupBracket::Bracket,
+                    tokens,
+                })));
+            }
+            (']', Some(GroupBracket::Bracket)) => return None,
+            ('{', _) => {
+                let open = self.make_position().to_span(1);
+                self.index += 1;
+                self.column += 1;
+
+                let tokens = self.collect(Some(GroupBracket::Brace));
+
+                let close = self.make_position().to_span(1);
+                self.index += 1;
+                self.column += 1;
+
+                return Some(Some(Tokens::Group(Group {
+                    open,
+                    close,
+                    bracket: GroupBracket::Brace,
+                    tokens,
+                })));
+            }
+            ('}', Some(GroupBracket::Brace)) => return None,
+            _ => (),
+        }
 
         let token = match (char, char_1, char_2) {
             // Keywords and identifiers
@@ -232,15 +310,7 @@ impl Iterator for Lexer {
             (';', _, _) => Some(Semi::from_span_start(self.make_position())),
             (':', _, _) => Some(Colon::from_span_start(self.make_position())),
             (',', _, _) => Some(Comma::from_span_start(self.make_position())),
-            ('"', _, _) => Some(Quote::from_span_start(self.make_position())),
             ('#', _, _) => Some(Pound::from_span_start(self.make_position())),
-            ('\'', _, _) => Some(SingleQuote::from_span_start(self.make_position())),
-            ('{', _, _) => Some(OpenBrace::from_span_start(self.make_position())),
-            ('}', _, _) => Some(CloseBrace::from_span_start(self.make_position())),
-            ('[', _, _) => Some(OpenBracket::from_span_start(self.make_position())),
-            (']', _, _) => Some(CloseBracket::from_span_start(self.make_position())),
-            ('(', _, _) => Some(OpenParen::from_span_start(self.make_position())),
-            (')', _, _) => Some(CloseParen::from_span_start(self.make_position())),
 
             // Operators
             ('&', Some('='), _) => Some(AndEq::from_span_start(self.make_position())),
@@ -324,54 +394,58 @@ external void main() {
 }
 ";
 
-        let mut tokens = Lexer::run(input.as_bytes());
+        let tokens = Lexer::run(input.as_bytes());
+        println!("{:#?}", tokens);
 
-        assert_eq!(tokens.next(), Some(Token::Export(Export(span!(1:0-6)))));
-        assert_eq!(tokens.next(), Some(Token::Struct(Struct(span!(1:7-13)))));
         assert_eq!(
-            tokens.next(),
-            Some(Token::Ident(Ident {
-                value: "data".to_string(),
-                span: span!(1:14-18)
-            }))
+            vec![
+                Tokens::Export(Export(span!(1:0-6))),
+                Tokens::Struct(Struct(span!(1:7-13))),
+                Tokens::Ident(Ident {
+                    value: "data".to_string(),
+                    span: span!(1:14-18)
+                }),
+                Tokens::Group(Group {
+                    open: span!(1:19-20),
+                    close: span!(3:0-1),
+                    bracket: GroupBracket::Brace,
+                    tokens: vec![
+                        Tokens::Ident(Ident {
+                            value: "int32".to_string(),
+                            span: span!(2:4-9)
+                        }),
+                        Tokens::Ident(Ident {
+                            value: "i".to_string(),
+                            span: span!(2:10-11)
+                        }),
+                        Tokens::Assign(Assign(span!(2:12-13))),
+                        Tokens::Int(Int {
+                            value: 8,
+                            span: span!(2:14-15)
+                        }),
+                        Tokens::Semi(Semi(span!(2:15-16))),
+                    ]
+                }),
+                Tokens::External(External(span!(5:0-8))),
+                Tokens::Void(Void(span!(5:9-13))),
+                Tokens::Ident(Ident {
+                    value: "main".to_string(),
+                    span: span!(5:14-18)
+                }),
+                Tokens::Group(Group {
+                    open: span!(5:18-19),
+                    close: span!(5:19-20),
+                    bracket: GroupBracket::Paren,
+                    tokens: vec![]
+                }),
+                Tokens::Group(Group {
+                    open: span!(5:21-22),
+                    close: span!(7:0-1),
+                    bracket: GroupBracket::Brace,
+                    tokens: vec![]
+                }),
+            ],
+            tokens.as_slice()
         );
-        assert_eq!(tokens.next(), Some(Token::OpenBrace(OpenBrace(span!(1:19-20)))));
-        assert_eq!(
-            tokens.next(),
-            Some(Token::Ident(Ident {
-                value: "int32".to_string(),
-                span: span!(2:4-9)
-            }))
-        );
-        assert_eq!(
-            tokens.next(),
-            Some(Token::Ident(Ident {
-                value: "i".to_string(),
-                span: span!(2:10-11)
-            }))
-        );
-        assert_eq!(tokens.next(), Some(Token::Assign(Assign(span!(2:12-13)))));
-        assert_eq!(
-            tokens.next(),
-            Some(Token::Int(Int {
-                value: 8,
-                span: span!(2:14-15)
-            }))
-        );
-        assert_eq!(tokens.next(), Some(Token::Semi(Semi(span!(2:15-16)))));
-        assert_eq!(tokens.next(), Some(Token::CloseBrace(CloseBrace(span!(3:0-1)))));
-        assert_eq!(tokens.next(), Some(Token::External(External(span!(5:0-8)))));
-        assert_eq!(tokens.next(), Some(Token::Void(Void(span!(5:9-13)))));
-        assert_eq!(
-            tokens.next(),
-            Some(Token::Ident(Ident {
-                value: "main".to_string(),
-                span: span!(5:14-18)
-            }))
-        );
-        assert_eq!(tokens.next(), Some(Token::OpenParen(OpenParen(span!(5:18-19)))));
-        assert_eq!(tokens.next(), Some(Token::CloseParen(CloseParen(span!(5:19-20)))));
-        assert_eq!(tokens.next(), Some(Token::OpenBrace(OpenBrace(span!(5:21-22)))));
-        assert_eq!(tokens.next(), Some(Token::CloseBrace(CloseBrace(span!(7:0-1)))));
     }
 }

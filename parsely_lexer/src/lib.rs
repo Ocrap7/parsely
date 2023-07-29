@@ -43,6 +43,10 @@ impl Span {
     pub fn len(&self) -> usize {
         self.end.column - self.start.column
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Main lexing struct. This is an iterator
@@ -93,7 +97,7 @@ impl Lexer {
             chars: str.chars().collect(),
         };
 
-        lexer.filter_map(|c| c)
+        lexer.flatten()
     }
 
     /// Returns a position from the current state of the lexer.
@@ -113,12 +117,12 @@ impl Lexer {
 
         let int_ind = slice
             .iter()
-            .position(|c| !c.is_digit(10))
+            .position(|c| !c.is_ascii_digit())
             .unwrap_or(slice.len());
 
         let float_ind = slice
             .iter()
-            .position(|c| !c.is_digit(10))
+            .position(|c| !c.is_ascii_digit())
             .unwrap_or(slice.len());
 
         let kw_ind = slice
@@ -130,7 +134,7 @@ impl Lexer {
         let float_slice = &slice[..float_ind];
         let kw_slice = &slice[..kw_ind];
 
-        if int_slice.len() > 0 {
+        if !int_slice.is_empty() {
             let token = Some(Int::from_span_start(int_slice, self.make_position()));
 
             self.index += int_slice.len();
@@ -139,7 +143,7 @@ impl Lexer {
             return token;
         }
 
-        if float_slice.len() > 0 {
+        if !float_slice.is_empty() {
             let token = Some(Float::from_span_start(float_slice, self.make_position()));
 
             self.index += float_slice.len();
@@ -292,13 +296,13 @@ impl Iterator for Lexer {
 
                 None
             }
-            _ => panic!("Unknown token `{}`", char),
+            _ => panic!("Unknown token `{char}`"),
         };
 
-        token.as_ref().map(|tok| {
+        if let Some(tok) = token.as_ref() {
             self.column += tok.len();
             self.index += tok.len();
-        });
+        }
 
         Some(token)
     }

@@ -48,6 +48,10 @@ macro_rules! define_tokens {
                     ),*
                 }
             }
+
+            pub fn is_empty(&self) -> bool {
+                self.len() == 0
+            }
         }
     };
 }

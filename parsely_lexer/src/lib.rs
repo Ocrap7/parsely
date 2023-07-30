@@ -1,5 +1,6 @@
 use tokens::*;
 
+#[macro_use]
 pub mod tokens;
 
 /// Represents a single position in a source file
@@ -7,7 +8,7 @@ pub mod tokens;
 /// `line` line in the file (starting at 0)
 /// `column` in the line (starting at 0)
 ///
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
     pub line: usize,
     pub column: usize,
@@ -26,7 +27,7 @@ impl Position {
 }
 
 /// Represents a range in a file
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     pub start: Position,
     pub end: Position,
@@ -49,6 +50,11 @@ macro_rules! span {
 }
 
 impl Span {
+    pub const EMPTY: Span = Span {
+        start: Position { line: 0, column: 0 },
+        end: Position { line: 0, column: 0 },
+    };
+
     /// Length of span on a single line
     pub fn len(&self) -> usize {
         self.end.column - self.start.column
@@ -56,6 +62,13 @@ impl Span {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn join(self, other: Span) -> Span {
+        Span {
+            start: self.start,
+            end: other.end,
+        }
     }
 }
 
@@ -96,7 +109,7 @@ impl Lexer {
     /// Returns a `Lexer` as an iterator
     ///
     /// `buffer` should be a u8 ref
-    pub fn run(buffer: impl AsRef<[u8]>) -> Vec<Tokens> {
+    pub fn run(buffer: impl AsRef<[u8]>) -> Vec<Token> {
         let str = std::str::from_utf8(buffer.as_ref()).expect("Unable to decode buffer as utf8!");
 
         let mut lexer = Lexer {
@@ -117,7 +130,7 @@ impl Lexer {
         }
     }
 
-    fn collect(&mut self, group: Option<GroupBracket>) -> Vec<Tokens> {
+    fn collect(&mut self, group: Option<GroupBracket>) -> Vec<Token> {
         let mut tokens = Vec::new();
         while let Some(token) = self.next(group) {
             if let Some(token) = token {
@@ -132,7 +145,7 @@ impl Lexer {
     ///
     /// Returns `None` if the end of the buffer has been reached.
     ///
-    fn try_keyword_or_ident(&mut self) -> Option<Tokens> {
+    fn try_keyword_or_ident(&mut self) -> Option<Token> {
         let slice = self.chars.get(self.index..)?;
 
         let int_ind = slice
@@ -236,7 +249,7 @@ impl Lexer {
     /// If a valid token was found, `Some` is returned. Otherwise, if no tokens are left, `None` is returned.
     ///
     /// White space is ignored
-    fn next(&mut self, group: Option<GroupBracket>) -> Option<Option<Tokens>> {
+    fn next(&mut self, group: Option<GroupBracket>) -> Option<Option<Token>> {
         let char = *self.chars.get(self.index)?;
         let char_1 = self.chars.get(self.index + 1).copied();
         let char_2 = self.chars.get(self.index + 2).copied();
@@ -253,7 +266,7 @@ impl Lexer {
                 self.index += 1;
                 self.column += 1;
 
-                return Some(Some(Tokens::Group(Group {
+                return Some(Some(Token::Group(Group {
                     open,
                     close,
                     bracket: GroupBracket::Paren,
@@ -272,7 +285,7 @@ impl Lexer {
                 self.index += 1;
                 self.column += 1;
 
-                return Some(Some(Tokens::Group(Group {
+                return Some(Some(Token::Group(Group {
                     open,
                     close,
                     bracket: GroupBracket::Bracket,
@@ -291,7 +304,7 @@ impl Lexer {
                 self.index += 1;
                 self.column += 1;
 
-                return Some(Some(Tokens::Group(Group {
+                return Some(Some(Token::Group(Group {
                     open,
                     close,
                     bracket: GroupBracket::Brace,
@@ -328,6 +341,8 @@ impl Lexer {
             ('<', Some('<'), Some('=')) => Some(LeftShiftEq::from_span_start(self.make_position())),
             ('<', Some('<'), _) => Some(LeftShift::from_span_start(self.make_position())),
             ('|', Some('|'), _) => Some(LogicalOr::from_span_start(self.make_position())),
+            ('|', Some('='), _) => Some(OrEq::from_span_start(self.make_position())),
+            ('|', _, _) => Some(Or::from_span_start(self.make_position())),
             ('<', Some('='), _) => Some(LtEq::from_span_start(self.make_position())),
             ('<', _, _) => Some(Lt::from_span_start(self.make_position())),
             ('-', Some('='), _) => Some(MinusEq::from_span_start(self.make_position())),
@@ -399,46 +414,46 @@ external void main() {
 
         assert_eq!(
             vec![
-                Tokens::Export(Export(span!(1:0-6))),
-                Tokens::Struct(Struct(span!(1:7-13))),
-                Tokens::Ident(Ident {
+                Token::Export(Export(span!(1:0-6))),
+                Token::Struct(Struct(span!(1:7-13))),
+                Token::Ident(Ident {
                     value: "data".to_string(),
                     span: span!(1:14-18)
                 }),
-                Tokens::Group(Group {
+                Token::Group(Group {
                     open: span!(1:19-20),
                     close: span!(3:0-1),
                     bracket: GroupBracket::Brace,
                     tokens: vec![
-                        Tokens::Ident(Ident {
+                        Token::Ident(Ident {
                             value: "int32".to_string(),
                             span: span!(2:4-9)
                         }),
-                        Tokens::Ident(Ident {
+                        Token::Ident(Ident {
                             value: "i".to_string(),
                             span: span!(2:10-11)
                         }),
-                        Tokens::Assign(Assign(span!(2:12-13))),
-                        Tokens::Int(Int {
+                        Token::Assign(Assign(span!(2:12-13))),
+                        Token::Int(Int {
                             value: 8,
                             span: span!(2:14-15)
                         }),
-                        Tokens::Semi(Semi(span!(2:15-16))),
+                        Token::Semi(Semi(span!(2:15-16))),
                     ]
                 }),
-                Tokens::External(External(span!(5:0-8))),
-                Tokens::Void(Void(span!(5:9-13))),
-                Tokens::Ident(Ident {
+                Token::External(External(span!(5:0-8))),
+                Token::Void(Void(span!(5:9-13))),
+                Token::Ident(Ident {
                     value: "main".to_string(),
                     span: span!(5:14-18)
                 }),
-                Tokens::Group(Group {
+                Token::Group(Group {
                     open: span!(5:18-19),
                     close: span!(5:19-20),
                     bracket: GroupBracket::Paren,
                     tokens: vec![]
                 }),
-                Tokens::Group(Group {
+                Token::Group(Group {
                     open: span!(5:21-22),
                     close: span!(7:0-1),
                     bracket: GroupBracket::Brace,

@@ -367,6 +367,7 @@ impl Lexer {
             ('&', _, _) => Some(And::from_span_start(self.make_position())),
             ('=', Some('='), _) => Some(Eq::from_span_start(self.make_position())),
             ('=', _, _) => Some(Assign::from_span_start(self.make_position())),
+            ('.', Some('.'), _) => Some(Range::from_span_start(self.make_position())),
             ('.', _, _) => Some(Dot::from_span_start(self.make_position())),
             ('>', Some('>'), Some('=')) => {
                 Some(RightShiftEq::from_span_start(self.make_position()))

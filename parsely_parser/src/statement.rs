@@ -61,11 +61,17 @@ impl Parse for VariableDeclaration {
             arrays.push(stream.parse()?);
         }
 
+        let init = if let tokens::Tok![enum =] = stream.peek()? {
+            Some(stream.parse()?)
+        } else {
+            None
+        };
+
         Ok(VariableDeclaration {
             ty,
             ident,
             arrays,
-            init: stream.parse()?,
+            init,
             semi: stream.parse()?,
         })
     }

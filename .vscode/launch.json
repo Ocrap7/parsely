@@ -41,6 +41,62 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'parsely-gen'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=parsely-gen"
+                ],
+                "filter": {
+                    "name": "parsely-gen",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'parsely'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=parsely",
+                    "--package=parsely"
+                ],
+                "filter": {
+                    "name": "parsely",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'parsely'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=parsely",
+                    "--package=parsely"
+                ],
+                "filter": {
+                    "name": "parsely",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

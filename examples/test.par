@@ -1,10 +1,7 @@
 
+int32 main() {
+    int32 i[][] = [[1, 2, 3, 4], [2, 3, 4, 5], [3, 4, 5, 6], [4, 5, 6, 7]];
+    int32 ii[] = i[2];
 
-export opaque packed struct data {
-    int32 data;
-}
-
-void main() {
-    int32 i[] = [1, 2, 3, 4];
-    
+    int32 ival[] = ii[1];
 }

@@ -22,6 +22,7 @@ fn main() {
     let stream = ParseStream::from(&tokens);
 
     let program = stream.parse().unwrap();
+    println!("{:#?}", program);
 
     let module = Module::new(path.file_stem().unwrap().to_string_lossy().as_ref());
     let (header, code) = module.run(&program).unwrap();

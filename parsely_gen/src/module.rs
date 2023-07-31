@@ -2,7 +2,7 @@ use std::{fmt::Write, io};
 
 use parsely_parser::item::{Program, TopLevelItem};
 
-use crate::Result;
+use crate::{symbols::SymbolTable, Result};
 
 pub(crate) struct Buffers<'hdr, 'code, HB: Write, CB: Write> {
     pub(crate) header: &'hdr mut HB,
@@ -10,13 +10,15 @@ pub(crate) struct Buffers<'hdr, 'code, HB: Write, CB: Write> {
 }
 
 pub struct Module {
-    name: String,
+    pub(crate) name: String,
+    pub(crate) symbol_table: SymbolTable,
 }
 
 impl Module {
     pub fn new(name: impl ToString) -> Module {
         Module {
             name: name.to_string(),
+            symbol_table: SymbolTable::new(),
         }
     }
 
@@ -46,6 +48,4 @@ impl Module {
 
         Ok((header, code))
     }
-
-    
 }

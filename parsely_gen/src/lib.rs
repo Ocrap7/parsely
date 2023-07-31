@@ -5,6 +5,7 @@ mod item;
 mod types;
 mod statement;
 mod expression;
+mod symbols;
 
 #[derive(Error, Debug)]
 pub enum GenError {

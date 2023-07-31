@@ -18,14 +18,16 @@ typedef _Bool bool;
 #define true 1
 #define false 0
 
-struct slice
+typedef struct slice
 {
     usize len;
-    void *value;
-};
+    void *ptr;
+} slice;
 
-struct str
+typedef struct str
 {
     usize len;
-    char *value;
-};
+    char *ptr;
+} str;
+
+#define array_access(lval, ty) _Generic((lval), slice: ((ty*)lval.ptr), default: lval)

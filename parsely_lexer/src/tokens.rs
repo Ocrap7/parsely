@@ -360,6 +360,7 @@ define_tokens! {
         OrEq = |=,
         Plus = +,
         PlusEq = +=,
+        Range = ..,
         Rem = %,
         RemEq = %=,
         RightShift = >>,

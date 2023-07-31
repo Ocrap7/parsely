@@ -24,20 +24,34 @@ impl Module {
                 if item.export.is_some() && item.opaque.is_some() {
                     writeln!(buffers.header, "typedef struct {0} {0}; ", item.ident.value)?;
 
-                    writeln!(buffers.code, "typedef struct {}{} {{ ", packed, item.ident.value)?;
+                    writeln!(
+                        buffers.code,
+                        "typedef struct {}{} {{ ",
+                        packed, item.ident.value
+                    )?;
                     self.gen_struct_body(buffers.code, item.body.value.iter())?;
                     writeln!(buffers.code, "}} {};\n", item.ident.value)?;
                 } else if item.export.is_some() {
-                    writeln!(buffers.header, "typedef struct {}{} {{ ", packed, item.ident.value)?;
+                    writeln!(
+                        buffers.header,
+                        "typedef struct {}{} {{ ",
+                        packed, item.ident.value
+                    )?;
                     self.gen_struct_body(buffers.header, item.body.value.iter())?;
                     writeln!(buffers.header, "}} {};\n", item.ident.value)?;
                 } else {
-                    writeln!(buffers.code, "typedef struct {}{} {{ ", packed, item.ident.value)?;
+                    writeln!(
+                        buffers.code,
+                        "typedef struct {}{} {{ ",
+                        packed, item.ident.value
+                    )?;
                     self.gen_struct_body(buffers.code, item.body.value.iter())?;
                     writeln!(buffers.code, "}} {};\n", item.ident.value)?;
                 }
             }
             TopLevelItem::Function(func) => {
+                self.symbol_table.push_scope();
+
                 if func.export.is_some() {
                     self.gen_function_signature(buffers.header, func)?;
                     write!(buffers.header, ";")?;
@@ -55,6 +69,9 @@ impl Module {
                     self.gen_statement(buffers.code, item)?;
                 }
                 writeln!(buffers.code, "}}")?;
+
+                let scp = self.symbol_table.pop_scope();
+                println!("{:#?}", scp);
             }
             TopLevelItem::ExternalFunction(func) => {
                 if func.export.is_some() {

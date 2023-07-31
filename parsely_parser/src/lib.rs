@@ -5,8 +5,8 @@ use parsely_lexer::tokens::Token;
 pub mod expr;
 pub mod item;
 pub mod statement;
-pub mod types;
 mod tokens;
+pub mod types;
 
 /// Represents an error while parsing
 #[derive(Debug)]
@@ -68,7 +68,7 @@ impl ParseStream<'_> {
         T::parse(self)
     }
 
-    pub fn parse_with<T: Parse>(&self, f: impl Fn(&'_ ParseStream<'_>) -> Result<T>) -> Result<T> {
+    pub fn parse_with<T>(&self, f: impl Fn(&'_ ParseStream<'_>) -> Result<T>) -> Result<T> {
         f(self)
     }
 
@@ -261,7 +261,7 @@ impl<T: Parse> Parse for Braces<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Brackets<T: Parse> {
+pub struct Brackets<T> {
     pub parens: parsely_lexer::tokens::Bracket,
     pub value: Box<T>,
 }
@@ -292,6 +292,35 @@ impl<T: Parse> Parse for Brackets<T> {
     }
 }
 
+impl<T> Brackets<T> {
+    fn parse_with(
+        stream: &'_ ParseStream<'_>,
+        f: impl Fn(&'_ ParseStream<'_>) -> Result<T>,
+    ) -> Result<Self> {
+        match stream.next() {
+            Token::Group(parsely_lexer::tokens::Group {
+                bracket: parsely_lexer::tokens::GroupBracket::Bracket,
+                tokens,
+                open,
+                close,
+                ..
+            }) => {
+                let stream = crate::parse_from_vec(&tokens);
+                f(&stream).map(|value| Brackets {
+                    parens: parsely_lexer::tokens::Bracket {
+                        span: open.join(close),
+                    },
+                    value: Box::new(value),
+                })
+            }
+            found => Err(ParseError::UnexpectedToken {
+                found,
+                expected: "Brackets".to_string(),
+            }),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Punctuation<T: Parse, P: Parse> {
     items: Vec<(T, P)>,
@@ -303,6 +332,10 @@ where
     T: Parse,
     P: Parse,
 {
+    pub fn len(&self) -> usize {
+        self.items.len() + if self.last.is_some() { 1 } else { 0 }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.items
             .iter()
@@ -362,9 +395,9 @@ where
         let mut last = None;
 
         while stream.has_next() {
-            let item = stream.parse()?;
+            let item = stream.parse().unwrap();
             if stream.has_next() {
-                let punct = stream.parse()?;
+                let punct = stream.parse().unwrap();
                 items.push((item, punct));
             } else {
                 last = Some(Box::new(item));

@@ -1,4 +1,4 @@
-use parsely_lexer::tokens::{self, Token};
+use parsely_lexer::tokens::{self, Group, GroupBracket, Token};
 
 use crate::{Brackets, Parse, ParseError, ParseStream, Punctuation, Result};
 
@@ -83,9 +83,12 @@ impl Parse for LiteralString {
 #[derive(Debug, Clone)]
 pub enum Expression {
     Literal(Literal),
+    Ident(tokens::Ident),
     ArrayInit(ArrayInit),
     Parens(crate::Parens<Expression>),
     BinOp(BinOp),
+    Index(Index),
+    Slice(Slice),
 }
 
 impl Expression {
@@ -99,6 +102,7 @@ impl Expression {
                 bracket: tokens::GroupBracket::Bracket,
                 ..
             }) => stream.parse().map(|array| Expression::ArrayInit(array)),
+            Token::Ident(ident) => Ok(Expression::Ident(stream.next_ref(ident))),
             _ => stream.parse().map(|tok| Expression::Literal(tok)),
         }
     }
@@ -115,6 +119,11 @@ pub struct BinOp {
     pub left: Box<Expression>,
     pub op: tokens::Token,
     pub right: Box<Expression>,
+}
+
+enum IndexOrSlice {
+    Index(Box<Expression>),
+    Slice(Range),
 }
 
 impl BinOp {
@@ -138,6 +147,55 @@ impl BinOp {
                 op,
                 right: Box::new(right),
             });
+        }
+
+        while stream.has_next() {
+            match stream.peek() {
+                Ok(Token::Group(Group {
+                    bracket: GroupBracket::Bracket,
+                    ..
+                })) => {
+                    let ios = stream.parse_with(|stream| {
+                        Brackets::parse_with(stream, |stream| match stream.peek()? {
+                            tokens::Tok![enum ..] => Ok(IndexOrSlice::Slice(Range::parse(stream)?)),
+                            _ => {
+                                let left = stream.parse()?;
+                                match stream.peek() {
+                                    Ok(tokens::Tok![enum ..]) => Ok(IndexOrSlice::Slice(Range {
+                                        left: Some(Box::new(left)),
+                                        token: stream.parse()?,
+                                        right: stream.parse()?,
+                                    })),
+                                    _ => Ok(IndexOrSlice::Index(Box::new(left))),
+                                }
+                            }
+                        })
+                    })?;
+
+                    match *ios.value {
+                        IndexOrSlice::Index(value) => {
+                            left = Expression::Index(Index {
+                                expr: Box::new(left),
+                                index: Brackets {
+                                    parens: ios.parens,
+                                    value,
+                                },
+                            })
+                        }
+                        IndexOrSlice::Slice(s) => {
+                            left = Expression::Slice(Slice {
+                                expr: Box::new(left),
+                                range: Brackets {
+                                    parens: ios.parens,
+                                    value: Box::new(s),
+                                },
+                            })
+                        }
+                    }
+                }
+
+                _ => break,
+            }
         }
 
         Ok(left)
@@ -179,10 +237,57 @@ pub struct ArrayInit {
     pub elements: Brackets<Punctuation<Expression, tokens::Tok![,]>>,
 }
 
+impl ArrayInit {
+    pub fn dimensions(&self) -> Vec<usize> {
+        let mut v = vec![self.elements.value.len()];
+
+        for f in self.elements.value.iter() {
+            match f {
+                Expression::ArrayInit(a) => {
+                    v.extend(a.dimensions());
+                    break;
+                }
+                _ => (),
+            }
+        }
+
+        v
+    }
+}
+
 impl Parse for ArrayInit {
     fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
         Ok(ArrayInit {
             elements: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Slice {
+    pub expr: Box<Expression>,
+    pub range: Brackets<Range>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Index {
+    pub expr: Box<Expression>,
+    pub index: Brackets<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Range {
+    pub left: Option<Box<Expression>>,
+    pub token: tokens::Tok![..],
+    pub right: Option<Box<Expression>>,
+}
+
+impl Parse for Range {
+    fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
+        Ok(Range {
+            left: stream.parse()?,
+            token: stream.parse()?,
+            right: stream.parse()?,
         })
     }
 }

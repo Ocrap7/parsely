@@ -70,6 +70,7 @@ impl_token_parse! {
     Or,
     Plus,
     PlusEq,
+    Range,
     Rem,
     RemEq,
     RightShift,

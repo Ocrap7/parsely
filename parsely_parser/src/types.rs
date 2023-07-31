@@ -1,10 +1,13 @@
-use parsely_lexer::tokens::{self, Token};
+use parsely_lexer::tokens::{self, Group, GroupBracket, Token};
 
-use crate::{Parse, ParseError};
+use crate::{statement::ArrayDimension, Parse, ParseError};
 
 #[derive(Debug, Clone)]
 pub enum Type {
+    Empty,
     Int(TypeInt),
+    Array(TypeArray),
+    Slice(TypeArray),
     Str(tokens::Ident),
     Void(tokens::Void),
     Named(tokens::Ident),
@@ -12,7 +15,7 @@ pub enum Type {
 
 impl Parse for Type {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        match stream.peek()? {
+        let base = match stream.peek()? {
             tokens::Tok!(enum void as v) => Ok(Type::Void(stream.next_ref(v))),
             Token::Ident(ident) if &ident.value[..3] == "int" => stream.parse().map(Type::Int),
             Token::Ident(ident) if ident.value == "str" => stream.parse().map(Type::Str),
@@ -21,7 +24,18 @@ impl Parse for Type {
                 found: found.clone(),
                 expected: "Type".to_string(),
             }),
-        }
+        };
+
+        base.and_then(|base| match stream.peek()? {
+            Token::Group(Group {
+                bracket: GroupBracket::Bracket,
+                ..
+            }) => Ok(Type::Array(TypeArray {
+                element: Box::new(base),
+                arrays: stream.parse()?,
+            })),
+            _ => Ok(base),
+        })
     }
 }
 
@@ -58,3 +72,17 @@ impl Parse for TypeInt {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct TypeArray {
+    pub element: Box<Type>,
+    pub arrays: Vec<ArrayDimension>,
+}
+
+impl Parse for TypeArray {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(TypeArray {
+            element: stream.parse()?,
+            arrays: stream.parse()?,
+        })
+    }
+}

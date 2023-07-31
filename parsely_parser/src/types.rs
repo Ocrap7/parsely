@@ -5,7 +5,9 @@ use crate::{Parse, ParseError};
 #[derive(Debug, Clone)]
 pub enum Type {
     Int(TypeInt),
+    Str(tokens::Ident),
     Void(tokens::Void),
+    Named(tokens::Ident),
 }
 
 impl Parse for Type {
@@ -13,6 +15,8 @@ impl Parse for Type {
         match stream.peek()? {
             tokens::Tok!(enum void as v) => Ok(Type::Void(stream.next_ref(v))),
             Token::Ident(ident) if &ident.value[..3] == "int" => stream.parse().map(Type::Int),
+            Token::Ident(ident) if ident.value == "str" => stream.parse().map(Type::Str),
+            Token::Ident(_) => stream.parse().map(Type::Named),
             found => Err(ParseError::UnexpectedToken {
                 found: found.clone(),
                 expected: "Type".to_string(),
@@ -53,3 +57,4 @@ impl Parse for TypeInt {
         }
     }
 }
+

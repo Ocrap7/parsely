@@ -24,6 +24,13 @@ impl Position {
             start: self,
         }
     }
+
+    pub fn join(self, other: Position) -> Span {
+        Span {
+            start: self,
+            end: other,
+        }
+    }
 }
 
 /// Represents a range in a file
@@ -215,6 +222,8 @@ impl Lexer {
             ['m', 'a', 't', 'c', 'h'] => Some(Match::from_span_start(self.make_position())),
             /* Nones */
             ['n', 'o', 'n', 'e'] => Some(Nones::from_span_start(self.make_position())),
+            ['o', 'p', 'a', 'q', 'u', 'e'] => Some(Opaque::from_span_start(self.make_position())),
+            ['p', 'a', 'c', 'k', 'e', 'd'] => Some(Packed::from_span_start(self.make_position())),
             /* Persist */
             ['p', 'e', 'r', 's', 'i', 's', 't'] => {
                 Some(Persist::from_span_start(self.make_position()))
@@ -240,6 +249,32 @@ impl Lexer {
         self.column += kw_slice.len();
 
         token
+    }
+
+    fn try_string(&mut self) -> Option<Token> {
+        let char = *self.chars.get(self.index)?;
+        match char {
+            '"' => {
+                let open = self.make_position();
+                self.index += 1;
+
+                let slice = self.chars.get(self.index..)?;
+
+                let ind = slice.iter().position(|c| *c == '"').unwrap();
+
+                let close = self.make_position();
+                let slice = &slice[..ind];
+
+                self.index += slice.len() + 1;
+                self.column += slice.len() + 1;
+
+                Some(Token::String(String {
+                    value: slice.iter().collect(),
+                    span: open.join(close),
+                }))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -318,6 +353,7 @@ impl Lexer {
         let token = match (char, char_1, char_2) {
             // Keywords and identifiers
             ('a'..='z' | '0'..='9', _, _) => return Some(self.try_keyword_or_ident()),
+            ('"', _, _) => return Some(self.try_string()),
 
             // Punctuation
             (';', _, _) => Some(Semi::from_span_start(self.make_position())),

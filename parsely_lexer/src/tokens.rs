@@ -23,6 +23,10 @@ macro_rules! define_tokens {
                 pub fn len() -> usize {
                     stringify!($st).len()
                 }
+
+                pub fn as_str() -> &'static str {
+                    stringify!($st)
+                }
             }
 
             impl std::fmt::Display for $struct_name {
@@ -64,6 +68,15 @@ macro_rules! define_tokens {
 
             pub fn is_empty(&self) -> bool {
                 self.len() == 0
+            }
+
+            pub fn as_str(&self) -> &'static str {
+                match self {
+                    $(
+                        $token_enum::$struct_name(_) => $struct_name::as_str()
+                    ),*,
+                    _ => panic!("Unable to get static str on token! (maybe use .to_string() instead)")
+                }
             }
         }
 
@@ -309,6 +322,8 @@ define_tokens! {
         If = if,
         Match = match,
         Nones = none,
+        Opaque = opaque,
+        Packed = packed,
         Persist = persist,
         Return = return,
         Struct = struct,

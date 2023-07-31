@@ -2,11 +2,11 @@ use std::{cell::Cell, fmt::Display};
 
 use parsely_lexer::tokens::Token;
 
-mod expr;
-mod item;
-mod statement;
+pub mod expr;
+pub mod item;
+pub mod statement;
+pub mod types;
 mod tokens;
-mod types;
 
 /// Represents an error while parsing
 #[derive(Debug)]
@@ -134,7 +134,7 @@ where
     T: Parse,
 {
     fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
-        Ok(T::parse(stream).ok())
+        Ok(stream.parse().ok())
     }
 }
 
@@ -143,7 +143,20 @@ where
     T: Parse,
 {
     fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
-        Ok(Box::new(T::parse(stream)?))
+        stream.parse().map(Box::new)
+    }
+}
+
+impl<T> Parse for Vec<T>
+where
+    T: Parse,
+{
+    fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
+        let mut items = Vec::new();
+        while stream.has_next() {
+            items.push(stream.parse()?)
+        }
+        Ok(items)
     }
 }
 

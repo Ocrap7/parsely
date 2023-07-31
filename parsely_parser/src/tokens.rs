@@ -33,6 +33,8 @@ impl_token_parse! {
     If,
     Match,
     Nones,
+    Opaque,
+    Packed,
     Persist,
     Return,
     Struct,

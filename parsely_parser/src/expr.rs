@@ -1,6 +1,6 @@
 use parsely_lexer::tokens::{self, Token};
 
-use crate::{Parse, ParseError, ParseStream, Result};
+use crate::{Brackets, Parse, ParseError, ParseStream, Punctuation, Result};
 
 #[derive(Debug, Clone)]
 pub enum Literal {
@@ -83,6 +83,7 @@ impl Parse for LiteralString {
 #[derive(Debug, Clone)]
 pub enum Expression {
     Literal(Literal),
+    ArrayInit(ArrayInit),
     Parens(crate::Parens<Expression>),
     BinOp(BinOp),
 }
@@ -94,6 +95,10 @@ impl Expression {
                 bracket: tokens::GroupBracket::Paren,
                 ..
             }) => stream.parse().map(|parens| Expression::Parens(parens)),
+            Token::Group(tokens::Group {
+                bracket: tokens::GroupBracket::Bracket,
+                ..
+            }) => stream.parse().map(|array| Expression::ArrayInit(array)),
             _ => stream.parse().map(|tok| Expression::Literal(tok)),
         }
     }
@@ -104,8 +109,6 @@ impl Parse for Expression {
         BinOp::parse_binop(stream, 0)
     }
 }
-
-
 
 #[derive(Debug, Clone)]
 pub struct BinOp {
@@ -168,6 +171,19 @@ impl BinOp {
             | tokens::Tok![enum |=] => 30,
             _ => 0,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayInit {
+    pub elements: Brackets<Punctuation<Expression, tokens::Tok![,]>>,
+}
+
+impl Parse for ArrayInit {
+    fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
+        Ok(ArrayInit {
+            elements: stream.parse()?,
+        })
     }
 }
 

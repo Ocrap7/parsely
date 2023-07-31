@@ -1,15 +1,23 @@
-use parsely_lexer::tokens;
+use parsely_lexer::tokens::{self, Group, GroupBracket, Token};
 
-use crate::{expr::Expression, Parse};
+use crate::{expr::Expression, types::Type, Braces, Brackets, Parse};
 
 #[derive(Debug, Clone)]
 pub enum Statement {
     Expression(ExpressionStatement),
+    VariableDeclaration(VariableDeclaration),
+    IfStatement(IfStatement),
+    WhileLoop(WhileLoop),
 }
 
 impl Parse for Statement {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        match stream.peek() {
+        match (stream.peek()?, stream.peekn(1)) {
+            (Token::Ident(_), Ok(Token::Ident(_))) => {
+                stream.parse().map(Statement::VariableDeclaration)
+            }
+            (tokens::Tok![enum if], _) => stream.parse().map(Statement::IfStatement),
+            (tokens::Tok![enum while], _) => stream.parse().map(Statement::WhileLoop),
             _ => stream.parse().map(Statement::Expression),
         }
     }
@@ -26,6 +34,101 @@ impl Parse for ExpressionStatement {
         Ok(ExpressionStatement {
             expression: stream.parse()?,
             semi: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VariableDeclaration {
+    pub ty: Box<Type>,
+    pub ident: tokens::Ident,
+    pub arrays: Vec<ArrayDimension>,
+    pub init: Option<VariableInit>,
+    pub semi: tokens::Tok!(;),
+}
+
+impl Parse for VariableDeclaration {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        let ty = stream.parse()?;
+        let ident = stream.parse()?;
+
+        let mut arrays = Vec::new();
+        while let Token::Group(Group {
+            bracket: GroupBracket::Bracket,
+            ..
+        }) = stream.peek()?
+        {
+            arrays.push(stream.parse()?);
+        }
+
+        Ok(VariableDeclaration {
+            ty,
+            ident,
+            arrays,
+            init: stream.parse()?,
+            semi: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ArrayDimension {
+    pub dimension: Brackets<Option<tokens::Int>>,
+}
+
+impl Parse for ArrayDimension {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(ArrayDimension {
+            dimension: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct VariableInit {
+    pub equal: tokens::Tok![=],
+    pub expression: Box<Expression>,
+}
+
+impl Parse for VariableInit {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(VariableInit {
+            equal: stream.parse()?,
+            expression: Box::new(stream.parse()?),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct IfStatement {
+    pub token: tokens::Tok![if],
+    pub condition: Box<Expression>,
+    pub body: Braces<Vec<Statement>>,
+}
+
+impl Parse for IfStatement {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(IfStatement {
+            token: stream.parse()?,
+            condition: stream.parse()?,
+            body: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WhileLoop {
+    pub token: tokens::Tok![if],
+    pub condition: Box<Expression>,
+    pub body: Braces<Vec<Statement>>,
+}
+
+impl Parse for WhileLoop {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(WhileLoop {
+            token: stream.parse()?,
+            condition: stream.parse()?,
+            body: stream.parse()?,
         })
     }
 }

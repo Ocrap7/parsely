@@ -1,88 +1,62 @@
-use parsely_lexer::tokens::{self, Group, GroupBracket, Token};
+use parsely_lexer::tokens::{self, Token};
 
-use crate::{statement::ArrayDimension, Parse, ParseError};
+use crate::{Parse, ParseError};
 
 #[derive(Debug, Clone)]
-pub enum Type {
-    Empty,
-    Int(TypeInt),
-    Array(TypeArray),
-    Slice(TypeArray),
-    Str(tokens::Ident),
-    Void(tokens::Void),
-    Named(tokens::Ident),
+pub struct ArrayType {
+    pub array_tok: tokens::ArrayTy,
+    pub of_tok: tokens::Of,
+    pub base_type: Box<Type>,
 }
 
-impl Parse for Type {
+impl Parse for ArrayType {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        let base = match stream.peek()? {
-            tokens::Tok!(enum void as v) => Ok(Type::Void(stream.next_ref(v))),
-            Token::Ident(ident) if &ident.value[..3] == "int" => stream.parse().map(Type::Int),
-            Token::Ident(ident) if ident.value == "str" => stream.parse().map(Type::Str),
-            Token::Ident(_) => stream.parse().map(Type::Named),
-            found => Err(ParseError::UnexpectedToken {
-                found: found.clone(),
-                expected: "Type".to_string(),
-            }),
-        };
-
-        base.and_then(|base| match stream.peek()? {
-            Token::Group(Group {
-                bracket: GroupBracket::Bracket,
-                ..
-            }) => Ok(Type::Array(TypeArray {
-                element: Box::new(base),
-                arrays: stream.parse()?,
-            })),
-            _ => Ok(base),
+        Ok(ArrayType {
+            array_tok: stream.parse()?,
+            of_tok: stream.parse()?,
+            base_type: stream.parse()?,
         })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct TypeInt {
-    pub size: usize,
-    pub token: tokens::Ident,
+pub enum Type {
+    Int(tokens::IntTy),
+    Float(tokens::FloatTy),
+    Bool(tokens::BoolTy),
+    Named(tokens::Ident),
+    Array(ArrayType),
 }
 
-impl Parse for TypeInt {
+impl Parse for Type {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            Token::Ident(tok @ tokens::Ident { value, .. }) => {
-                let (ipart, size_part) = value.split_at(3);
-                if ipart != "int" {
-                    return Err(ParseError::UnexpectedToken {
-                        found: stream.peek()?.clone(),
-                        expected: "int".to_string(),
-                    });
-                }
-
-                Ok(TypeInt {
-                    size: size_part.parse().map_err(|_| ParseError::UnexpectedSize {
-                        found: size_part.to_string(),
-                    })?,
-                    token: stream.next_ref(tok),
-                })
-            }
-            found => Err(ParseError::UnexpectedToken {
-                found: found.clone(),
-                expected: "Int Type".to_string(),
+            Token::IntTy(i) => Ok(Type::Int(stream.next_ref(i))),
+            Token::FloatTy(i) => Ok(Type::Float(stream.next_ref(i))),
+            Token::BoolTy(i) => Ok(Type::Bool(stream.next_ref(i))),
+            Token::ArrayTy(_) => stream.parse().map(Type::Array),
+            Token::Ident(i) => Ok(Type::Named(stream.next_ref(i))),
+            tok => Err(ParseError::UnexpectedToken {
+                found: tok.clone(),
+                expected: "type".into(),
             }),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct TypeArray {
-    pub element: Box<Type>,
-    pub arrays: Vec<ArrayDimension>,
+pub struct OfType {
+    pub of_tok: tokens::Of,
+    pub type_tok: tokens::Type,
+    pub ty: Type,
 }
 
-impl Parse for TypeArray {
+impl Parse for OfType {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(TypeArray {
-            element: stream.parse()?,
-            arrays: stream.parse()?,
+        Ok(OfType {
+            of_tok: stream.parse()?,
+            type_tok: stream.parse()?,
+            ty: stream.parse()?,
         })
     }
 }

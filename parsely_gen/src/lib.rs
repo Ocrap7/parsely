@@ -1,9 +1,8 @@
 use thiserror::Error;
 
-mod item;
 pub mod module;
-// mod types;
-// mod statement;
+
+mod item;
 mod expression;
 mod llvm_value;
 mod symbols;

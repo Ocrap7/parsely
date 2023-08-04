@@ -2,13 +2,12 @@ use std::{cell::Cell, fmt::Display};
 
 use parsely_lexer::tokens::Token;
 
-// pub mod expr;
-// pub mod item;
-// pub mod statement;
-pub mod ast;
-pub mod typess;
+pub mod expression;
+pub mod item;
+pub mod statement;
+pub mod types;
+
 mod tokens;
-// pub mod types;
 
 /// Represents an error while parsing
 #[derive(Debug)]
@@ -181,7 +180,7 @@ where
 
 pub fn parse_from_vec(vec: &Vec<Token>) -> ParseStream<'_> {
     ParseStream {
-        buffer: &vec,
+        buffer: vec,
         index: Cell::new(0),
     }
 }
@@ -225,7 +224,7 @@ pub struct Braces<T: Parse> {
 }
 
 impl<T: Parse> Braces<T> {
-    fn parse_with(
+    pub fn parse_with(
         stream: &'_ ParseStream<'_>,
         f: impl Fn(&'_ ParseStream<'_>) -> Result<T>,
     ) -> Result<Self> {
@@ -312,7 +311,7 @@ impl<T: Parse> Parse for Brackets<T> {
 }
 
 impl<T> Brackets<T> {
-    fn parse_with(
+    pub fn parse_with(
         stream: &'_ ParseStream<'_>,
         f: impl Fn(&'_ ParseStream<'_>) -> Result<T>,
     ) -> Result<Self> {
@@ -362,11 +361,18 @@ where
         self.items.len() + if self.last.is_some() { 1 } else { 0 }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.items
+        let t = self
+            .items
             .iter()
             .map(|item| &item.0)
-            .chain(self.last.as_ref().map(|last| last.as_ref()))
+            .chain(self.last.as_ref().map(|last| last.as_ref()));
+
+        t
     }
 
     pub fn into_iter(self) -> impl Iterator<Item = T> {
@@ -462,6 +468,10 @@ where
         self.items.len() + if self.last.is_some() { 1 } else { 0 }
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.items
             .iter()
@@ -478,6 +488,10 @@ where
 
     pub fn iter_punct(&self) -> impl Iterator<Item = &P> {
         self.items.iter().map(|item| &item.1)
+    }
+
+    pub fn last_punct(&self) -> &Option<L> {
+        &self.last_punct
     }
 
     pub fn into_iter_punct(self) -> impl Iterator<Item = P> {
@@ -514,21 +528,21 @@ where
             let punct = stream.try_parse();
             let lpunct = stream.try_parse();
 
-            if lpunct.is_ok() {
+            if let Ok(lpunct) = lpunct {
                 items.push((item, punct?));
 
                 let item = stream.parse()?;
 
                 return Ok(PunctuationLast {
                     items,
-                    last_punct: Some(lpunct.unwrap()),
+                    last_punct: Some(lpunct),
                     last: Some(Box::new(item)),
                 });
             }
 
             match punct {
                 Ok(punct) => items.push((item, punct)),
-                Err(_) if items.len() == 0 => {
+                Err(_) if items.is_empty() => {
                     return Ok(PunctuationLast {
                         items,
                         last_punct: None,
@@ -548,5 +562,6 @@ where
 
 #[cfg(test)]
 mod test {
+    #[test]
     fn test_basic() {}
 }

@@ -1,7 +1,6 @@
 use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
-use parsely_parser::ast::{
-    BinOp, BinOperator, BinOrUnary, ByOrImpl, Expression, Literal, Operation, UnaryOp,
-    UnaryOperator,
+use parsely_parser::expression::{
+    BinOperator, BinOrUnary, ByOrImpl, Expression, Literal, UnaryOperator,
 };
 
 use crate::{
@@ -12,7 +11,7 @@ use crate::{
 
 pub enum ValOrExpr<'ctx, 'a> {
     Val(Result<Value<'ctx>>),
-    Expr(&'a Box<Expression>),
+    Expr(&'a Expression),
 }
 
 impl<'ctx, 'a> ValOrExpr<'ctx, 'a> {
@@ -31,7 +30,7 @@ pub enum Op<'ctx, 'a> {
     Bin {
         left: ValOrExpr<'ctx, 'a>,
         op: BinOperator,
-        right: &'a Box<Expression>,
+        right: &'a Expression,
     },
     Uni {
         expr: ValOrExpr<'ctx, 'a>,
@@ -106,7 +105,7 @@ impl<'ctx> Module<'ctx> {
         match op {
             Op::Bin { left, right, op } => {
                 let left = left.val_or(|left| self.gen_expression(left));
-                let right = self.gen_expression(&right);
+                let right = self.gen_expression(right);
 
                 let (left, right) = match (left, right) {
                     (Ok(left), Ok(right)) => (left, right),
@@ -157,15 +156,15 @@ impl<'ctx> Module<'ctx> {
     fn gen_literal(&mut self, lit: &Literal) -> Result<Value<'ctx>> {
         match lit {
             Literal::Int(i) => {
-                let ty = self.context.i64_type().as_type();
+                let ty = self.context.i64_type().to_type();
                 Ok(ty.into_int_type().const_int(i.value, false).as_value(ty))
             }
             Literal::Float(f) => {
-                let ty = self.context.f64_type().as_type();
+                let ty = self.context.f64_type().to_type();
                 Ok(ty.into_float_type().const_float(f.value).as_value(ty))
             }
             Literal::Bool(b) => {
-                let ty = self.context.bool_type().as_type();
+                let ty = self.context.bool_type().to_type();
                 Ok(ty
                     .into_int_type()
                     .const_int(if b.value { 1 } else { 0 }, false)
@@ -173,7 +172,7 @@ impl<'ctx> Module<'ctx> {
             }
             Literal::String(s) => {
                 let llvm_bt = self.context.i8_type();
-                let base_type = llvm_bt.as_type();
+                let base_type = llvm_bt.to_type();
 
                 let array_vals: Vec<_> = s
                     .value

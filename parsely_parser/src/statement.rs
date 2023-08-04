@@ -1,140 +1,173 @@
-use parsely_lexer::tokens::{self, Group, GroupBracket, Token};
+use parsely_lexer::tokens;
 
-use crate::{expr::Expression, types::Type, Braces, Brackets, Parse};
+use crate::{
+    expression::Expression,
+    item::{Arguments, Definite, Indefinite},
+    Parse, ParseError, Punctuation,
+};
 
 #[derive(Debug, Clone)]
 pub enum Statement {
-    Expression(ExpressionStatement),
-    VariableDeclaration(VariableDeclaration),
-    IfStatement(IfStatement),
-    WhileLoop(WhileLoop),
+    Definition(DefinitionAction),
+    Execute(Execute),
 }
 
 impl Parse for Statement {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        match (stream.peek()?, stream.peekn(1)) {
-            (Token::Ident(_), Ok(Token::Ident(_))) => {
-                stream.parse().map(Statement::VariableDeclaration)
-            }
-            (tokens::Tok![enum if], _) => stream.parse().map(Statement::IfStatement),
-            (tokens::Tok![enum while], _) => stream.parse().map(Statement::WhileLoop),
-            _ => stream.parse().map(Statement::Expression),
+        match stream.peek()? {
+            tokens::Tok![enum defines] => Ok(Statement::Definition(stream.parse()?)),
+            tokens::Tok![enum executes] => Ok(Statement::Execute(stream.parse()?)),
+            tok => Err(ParseError::UnexpectedToken {
+                found: tok.clone(),
+                expected: "statement".into(),
+            }),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ExpressionStatement {
-    pub expression: Box<Expression>,
-    pub semi: tokens::Tok!(;),
-}
-
-impl Parse for ExpressionStatement {
-    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(ExpressionStatement {
-            expression: stream.parse()?,
-            semi: stream.parse()?,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct VariableDeclaration {
-    pub ty: Box<Type>,
+pub struct Execute {
+    pub exe_tok: tokens::Executes,
+    pub what: Definite,
+    pub called_tok: tokens::Called,
     pub ident: tokens::Ident,
-    pub arrays: Vec<ArrayDimension>,
-    pub init: Option<VariableInit>,
-    pub semi: tokens::Tok!(;),
 }
 
-impl Parse for VariableDeclaration {
+impl Parse for Execute {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        let ty = stream.parse()?;
-        let ident = stream.parse()?;
-
-        let mut arrays = Vec::new();
-        while let Token::Group(Group {
-            bracket: GroupBracket::Bracket,
-            ..
-        }) = stream.peek()?
-        {
-            arrays.push(stream.parse()?);
-        }
-
-        let init = if let tokens::Tok![enum =] = stream.peek()? {
-            Some(stream.parse()?)
-        } else {
-            None
-        };
-
-        Ok(VariableDeclaration {
-            ty,
-            ident,
-            arrays,
-            init,
-            semi: stream.parse()?,
+        Ok(Execute {
+            exe_tok: stream.parse()?,
+            what: stream.parse()?,
+            called_tok: stream.parse()?,
+            ident: stream.parse()?,
         })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ArrayDimension {
-    pub dimension: Brackets<Option<tokens::Int>>,
+pub struct BlockList {
+    pub statements: Punctuation<Statement, tokens::Then>,
 }
 
-impl Parse for ArrayDimension {
+impl Parse for BlockList {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(ArrayDimension {
-            dimension: stream.parse()?,
+        Ok(BlockList {
+            statements: stream.parse()?,
         })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct VariableInit {
-    pub equal: tokens::Tok![=],
-    pub expression: Box<Expression>,
+pub struct MutableInit {
+    pub starts_tok: tokens::Starts,
+    pub with_tok: tokens::With,
+    pub value: Expression,
+}
+
+impl Parse for MutableInit {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(MutableInit {
+            starts_tok: stream.parse()?,
+            with_tok: stream.parse()?,
+            value: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConstantInit {
+    pub contains_tok: tokens::Contains,
+    pub value: Expression,
+}
+
+impl Parse for ConstantInit {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(ConstantInit {
+            contains_tok: stream.parse()?,
+            value: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum VariableInit {
+    Mutable(MutableInit),
+    Const(ConstantInit),
 }
 
 impl Parse for VariableInit {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(VariableInit {
-            equal: stream.parse()?,
-            expression: Box::new(stream.parse()?),
-        })
+        match stream.peek()? {
+            tokens::Tok![enum starts] => Ok(VariableInit::Mutable(stream.parse()?)),
+            tokens::Tok![enum contains] => Ok(VariableInit::Const(stream.parse()?)),
+            tok => Err(ParseError::UnexpectedToken {
+                found: tok.clone(),
+                expected: "variable initializer".into(),
+            }),
+        }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct IfStatement {
-    pub token: tokens::Tok![if],
-    pub condition: Box<Expression>,
-    pub body: Braces<Vec<Statement>>,
+pub enum Init {
+    Variable(VariableInit),
+    Function(BlockList),
 }
 
-impl Parse for IfStatement {
+impl Init {
+    pub fn as_var(&self) -> &VariableInit {
+        match self {
+            Init::Variable(var) => var,
+            _ => panic!("Expected variable!"),
+        }
+    }
+
+    pub fn as_fn(&self) -> &BlockList {
+        match self {
+            Init::Function(func) => func,
+            _ => panic!("Expected fucntion!"),
+        }
+    }
+}
+
+impl Parse for Init {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(IfStatement {
-            token: stream.parse()?,
-            condition: stream.parse()?,
-            body: stream.parse()?,
-        })
+        match stream.peek()? {
+            tokens::Tok![enum starts] | tokens::Tok![enum contains] => {
+                Ok(Init::Variable(stream.parse()?))
+            }
+            _ => Ok(Init::Function(stream.parse()?)),
+        }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct WhileLoop {
-    pub token: tokens::Tok![if],
-    pub condition: Box<Expression>,
-    pub body: Braces<Vec<Statement>>,
+pub struct DefinitionAction {
+    pub def_tok: tokens::Defines,
+    pub what: Indefinite,
+    pub called_tok: tokens::Called,
+    pub ident: tokens::Ident,
+    pub args: Option<Arguments>,
+    pub that_tok: tokens::That,
+    pub init: Init,
 }
 
-impl Parse for WhileLoop {
+impl Parse for DefinitionAction {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(WhileLoop {
-            token: stream.parse()?,
-            condition: stream.parse()?,
-            body: stream.parse()?,
+        let def_tok = stream.parse()?;
+        let what: Indefinite = stream.parse()?;
+
+        Ok(DefinitionAction {
+            called_tok: stream.parse()?,
+            ident: stream.parse()?,
+            args: match what.noun.is_fn().then(|| stream.parse()) {
+                Some(s) => s?,
+                None => None,
+            },
+            that_tok: stream.parse()?,
+            init: stream.parse()?,
+            def_tok,
+            what,
         })
     }
 }

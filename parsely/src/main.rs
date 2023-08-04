@@ -1,13 +1,8 @@
-use std::{
-    fs::File,
-    io::{Read, Write},
-    path::PathBuf,
-    str::FromStr,
-};
+use std::{fs::File, io::Read, path::PathBuf, str::FromStr};
 
 use parsely_gen::module::Module;
 use parsely_lexer::Lexer;
-use parsely_parser::{ast::Program, ParseStream};
+use parsely_parser::{item::Program, ParseStream};
 
 fn main() {
     let path = PathBuf::from_str("examples/test.par").unwrap();
@@ -29,16 +24,4 @@ fn main() {
         &program,
     )
     .unwrap();
-
-
-    // let (header, code) = module.run(&program).unwrap();
-
-    // let header_path = path.with_extension("h");
-    // let code_path = path.with_extension("c");
-
-    // let mut header_file = File::create(header_path).unwrap();
-    // let mut code_file = File::create(code_path).unwrap();
-
-    // header_file.write(header.as_bytes()).unwrap();
-    // code_file.write(code.as_bytes()).unwrap();
 }

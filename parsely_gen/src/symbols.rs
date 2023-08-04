@@ -36,9 +36,9 @@ impl<'ctx> SymbolTable<'ctx> {
             }
 
             scope.variables.insert(name.to_string(), ty);
-            return true;
+            true
         } else {
-            return false;
+            false
         }
     }
 
@@ -52,8 +52,7 @@ impl<'ctx> SymbolTable<'ctx> {
     pub fn find_variable_in_current(&self, name: &str) -> Option<&Variable<'ctx>> {
         self.scopes
             .last()
-            .map(|scp| scp.variables.get(name))
-            .flatten()
+            .and_then(|scp| scp.variables.get(name))
     }
 
     pub fn iter_variable(
@@ -75,9 +74,9 @@ impl<'ctx> SymbolTable<'ctx> {
             }
 
             scope.functions.insert(name.to_string(), ty);
-            return true;
+            true
         } else {
-            return false;
+            false
         }
     }
 
@@ -91,8 +90,7 @@ impl<'ctx> SymbolTable<'ctx> {
     pub fn find_function_in_current(&self, name: &str) -> Option<&Function<'ctx>> {
         self.scopes
             .last()
-            .map(|scp| scp.functions.get(name))
-            .flatten()
+            .and_then(|scp| scp.functions.get(name))
     }
 
     pub fn iter_functions(
@@ -114,9 +112,9 @@ impl<'ctx> SymbolTable<'ctx> {
             }
 
             scope.types.insert(name.to_string(), ty);
-            return true;
+            true
         } else {
-            return false;
+            false
         }
     }
 
@@ -125,7 +123,7 @@ impl<'ctx> SymbolTable<'ctx> {
     }
 
     pub fn find_type_in_current(&self, name: &str) -> Option<&Type<'ctx>> {
-        self.scopes.last().map(|scp| scp.types.get(name)).flatten()
+        self.scopes.last().and_then(|scp| scp.types.get(name))
     }
 
     pub fn iter_types(&self) -> impl DoubleEndedIterator<Item = &HashMap<String, Type<'ctx>>> {

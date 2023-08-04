@@ -1,6 +1,6 @@
 use std::{fs::File, io::Write};
 
-use parsely_parser::ast::Program;
+use parsely_parser::item::Program;
 
 use crate::{symbols::SymbolTable, Result};
 

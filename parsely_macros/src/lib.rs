@@ -22,9 +22,9 @@ pub fn str_arr(tokens: TokenStream) -> TokenStream {
 
     let fstr = format!("['{}']", arr);
 
-    let toks = TokenStream::from_str(&fstr).unwrap();
+    
 
-    toks
+    TokenStream::from_str(&fstr).unwrap()
 }
 
 #[proc_macro]
@@ -37,7 +37,7 @@ pub fn consume_kw(tokens: TokenStream) -> TokenStream {
 
     let fstr = format!("Some({}::from_span_start(self.make_position()))", ident);
 
-    let toks = TokenStream::from_str(&fstr).unwrap();
+    
 
-    toks
+    TokenStream::from_str(&fstr).unwrap()
 }

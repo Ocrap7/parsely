@@ -1,5 +1,9 @@
 use inkwell::{types::BasicTypeEnum, values::PointerValue};
-use parsely_parser::ast::{Noun, Statement, TopLevelItem, VariableInit};
+use parsely_parser::{
+    item::Noun,
+    item::TopLevelItem,
+    statement::{Statement, VariableInit},
+};
 
 use crate::{
     llvm_value::{Function, Type, TypeFlags, Value, Variable},
@@ -51,7 +55,7 @@ impl<'ctx> Module<'ctx> {
     }
 
     /// Inserts an alloca instruction at the beginning of the function (the alloc_block)
-    /// 
+    ///
     /// I'm not sure if this is necessary but other compilers seem to do this
     fn insert_alloca(&mut self, ty: &Type<'ctx>, name: &str) -> Result<PointerValue<'ctx>> {
         let alloc_block = self.alloc_block.expect("Alloc block not set!");

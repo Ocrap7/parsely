@@ -46,7 +46,7 @@ pub trait TypeBuilder<'ctx> {
     fn signed(self, signed: bool) -> Type<'ctx>;
     fn mutable(self, mutable: bool) -> Type<'ctx>;
     fn base(self, base: Type<'ctx>) -> Type<'ctx>;
-    fn as_type(self) -> Type<'ctx>;
+    fn to_type(self) -> Type<'ctx>;
 }
 
 impl<'ctx, T: inkwell::types::AnyType<'ctx>> TypeBuilder<'ctx> for T {
@@ -82,7 +82,7 @@ impl<'ctx, T: inkwell::types::AnyType<'ctx>> TypeBuilder<'ctx> for T {
         }
     }
 
-    fn as_type(self) -> Type<'ctx> {
+    fn to_type(self) -> Type<'ctx> {
         Type {
             llvm: self.as_any_type_enum(),
             flags: TypeFlags::empty(),
@@ -107,7 +107,7 @@ impl<'ctx> TypeBuilder<'ctx> for Type<'ctx> {
         self
     }
 
-    fn as_type(self) -> Type<'ctx> {
+    fn to_type(self) -> Type<'ctx> {
         self
     }
 }

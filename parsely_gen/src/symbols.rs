@@ -1,22 +1,25 @@
 use std::collections::HashMap;
 
-use parsely_parser::types::Type;
-
-use crate::types::GenType;
+use crate::{
+    llvm_value::{Function, Type, Variable},
+    GenError, Result,
+};
 
 #[derive(Debug)]
-pub struct SymbolTable {
-    scopes: Vec<Scope>,
+pub struct SymbolTable<'ctx> {
+    scopes: Vec<Scope<'ctx>>,
 }
 
-impl SymbolTable {
-    pub fn new() -> SymbolTable {
+impl<'ctx> SymbolTable<'ctx> {
+    pub fn new() -> SymbolTable<'ctx> {
         SymbolTable { scopes: Vec::new() }
     }
 
     pub fn push_scope(&mut self) {
         self.scopes.push(Scope {
-            symbols: HashMap::new(),
+            variables: HashMap::new(),
+            functions: HashMap::new(),
+            types: HashMap::new(),
         })
     }
 
@@ -24,40 +27,119 @@ impl SymbolTable {
         self.scopes.pop()
     }
 
-    pub fn insert(&mut self, name: &str, ty: GenType) -> bool {
+    /* Variables */
+
+    pub fn insert_variable(&mut self, name: &str, ty: Variable<'ctx>) -> bool {
         if let Some(scope) = self.scopes.last_mut() {
-            if scope.symbols.contains_key(name) {
+            if scope.variables.contains_key(name) {
                 return false;
             }
 
-            scope.symbols.insert(name.to_string(), ty);
+            scope.variables.insert(name.to_string(), ty);
             return true;
         } else {
             return false;
         }
     }
 
-    pub fn find_symbol(&self, name: &str) -> Option<&GenType> {
-        self.iter().rev().find_map(|map| map.get(name))
+    pub fn find_variable(&self, name: &str) -> Result<&Variable<'ctx>> {
+        self.iter_variable()
+            .rev()
+            .find_map(|map| map.get(name))
+            .ok_or_else(|| GenError::SymbolNotFound(name.to_string()))
     }
 
-    pub fn find_symbol_in_current(&self, name: &str) -> Option<&GenType> {
+    pub fn find_variable_in_current(&self, name: &str) -> Option<&Variable<'ctx>> {
         self.scopes
             .last()
-            .map(|scp| scp.symbols.get(name))
+            .map(|scp| scp.variables.get(name))
             .flatten()
     }
 
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = &HashMap<String, GenType>> {
-        self.scopes.iter().map(|s| &s.symbols)
+    pub fn iter_variable(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = &HashMap<String, Variable<'ctx>>> {
+        self.scopes.iter().map(|s| &s.variables)
     }
 
-    pub fn iter_all(&self) -> impl Iterator<Item = (&String, &GenType)> {
-        self.iter().rev().flat_map(|map| map.iter())
+    pub fn iter_all_variables(&self) -> impl Iterator<Item = (&String, &Variable<'ctx>)> {
+        self.iter_variable().rev().flat_map(|map| map.iter())
+    }
+
+    /* Functions */
+
+    pub fn insert_function(&mut self, name: &str, ty: Function<'ctx>) -> bool {
+        if let Some(scope) = self.scopes.last_mut() {
+            if scope.functions.contains_key(name) {
+                return false;
+            }
+
+            scope.functions.insert(name.to_string(), ty);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    pub fn find_function(&self, name: &str) -> Result<&Function<'ctx>> {
+        self.iter_functions()
+            .rev()
+            .find_map(|map| map.get(name))
+            .ok_or_else(|| GenError::SymbolNotFound(name.to_string()))
+    }
+
+    pub fn find_function_in_current(&self, name: &str) -> Option<&Function<'ctx>> {
+        self.scopes
+            .last()
+            .map(|scp| scp.functions.get(name))
+            .flatten()
+    }
+
+    pub fn iter_functions(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = &HashMap<String, Function<'ctx>>> {
+        self.scopes.iter().map(|s| &s.functions)
+    }
+
+    pub fn iter_all_functions(&self) -> impl Iterator<Item = (&String, &Function<'ctx>)> {
+        self.iter_functions().rev().flat_map(|map| map.iter())
+    }
+
+    /* Types */
+
+    pub fn insert_type(&mut self, name: &str, ty: Type<'ctx>) -> bool {
+        if let Some(scope) = self.scopes.last_mut() {
+            if scope.types.contains_key(name) {
+                return false;
+            }
+
+            scope.types.insert(name.to_string(), ty);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    pub fn find_type(&self, name: &str) -> Option<&Type<'ctx>> {
+        self.iter_types().rev().find_map(|map| map.get(name))
+    }
+
+    pub fn find_type_in_current(&self, name: &str) -> Option<&Type<'ctx>> {
+        self.scopes.last().map(|scp| scp.types.get(name)).flatten()
+    }
+
+    pub fn iter_types(&self) -> impl DoubleEndedIterator<Item = &HashMap<String, Type<'ctx>>> {
+        self.scopes.iter().map(|s| &s.types)
+    }
+
+    pub fn iter_all_types(&self) -> impl Iterator<Item = (&String, &Type<'ctx>)> {
+        self.iter_types().rev().flat_map(|map| map.iter())
     }
 }
 
 #[derive(Debug)]
-pub struct Scope {
-    symbols: HashMap<String, GenType>,
+pub struct Scope<'ctx> {
+    variables: HashMap<String, Variable<'ctx>>,
+    functions: HashMap<String, Function<'ctx>>,
+    types: HashMap<String, Type<'ctx>>,
 }

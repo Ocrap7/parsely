@@ -27,6 +27,7 @@ impl_token_parse! {
     Arguments,
     ArrayTy,
     BoolTy,
+    By,
     Called,
     Constant,
     Contains,
@@ -46,6 +47,13 @@ impl_token_parse! {
     Value,
     Variable,
     With,
+
+    Adding,
+    Subtracting,
+    Multiplying,
+    Dividing,
+
+    Negating,
 
     // Punctuation
     Semi,

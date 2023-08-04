@@ -5,9 +5,9 @@ use parsely_lexer::tokens::Token;
 // pub mod expr;
 // pub mod item;
 // pub mod statement;
-mod tokens;
 pub mod ast;
 pub mod typess;
+mod tokens;
 // pub mod types;
 
 /// Represents an error while parsing
@@ -72,6 +72,19 @@ impl ParseStream<'_> {
 
     pub fn parse_with<T>(&self, f: impl Fn(&'_ ParseStream<'_>) -> Result<T>) -> Result<T> {
         f(self)
+    }
+
+    /// Trys to parse `T` but if it fails, the token index is restored incase parsing T consumed tokens
+    pub fn try_parse<T: Parse>(&self) -> Result<T> {
+        let index = self.index.get();
+
+        match T::parse(self) {
+            Ok(t) => Ok(t),
+            Err(e) => {
+                self.index.set(index);
+                Err(e)
+            }
+        }
     }
 
     pub fn has_next(&self) -> bool {
@@ -338,6 +351,13 @@ where
     T: Parse,
     P: Parse,
 {
+    pub const fn empty() -> Punctuation<T, P> {
+        Punctuation {
+            items: Vec::new(),
+            last: None,
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.items.len() + if self.last.is_some() { 1 } else { 0 }
     }
@@ -408,12 +428,121 @@ where
                 Ok(punct) => items.push((item, punct)),
                 _ => {
                     last = Some(Box::new(item));
-                    break
+                    break;
                 }
             }
         }
 
         Ok(Punctuation { items, last })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PunctuationLast<T: Parse, P: Parse, L: Parse> {
+    items: Vec<(T, P)>,
+    last_punct: Option<L>,
+    last: Option<Box<T>>,
+}
+
+impl<T, P, L> PunctuationLast<T, P, L>
+where
+    T: Parse,
+    P: Parse,
+    L: Parse,
+{
+    pub const fn empty() -> PunctuationLast<T, P, L> {
+        PunctuationLast {
+            items: Vec::new(),
+            last_punct: None,
+            last: None,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len() + if self.last.is_some() { 1 } else { 0 }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.items
+            .iter()
+            .map(|item| &item.0)
+            .chain(self.last.as_ref().map(|last| last.as_ref()))
+    }
+
+    pub fn into_iter(self) -> impl Iterator<Item = T> {
+        self.items
+            .into_iter()
+            .map(|item| item.0)
+            .chain(self.last.map(|last| *last))
+    }
+
+    pub fn iter_punct(&self) -> impl Iterator<Item = &P> {
+        self.items.iter().map(|item| &item.1)
+    }
+
+    pub fn into_iter_punct(self) -> impl Iterator<Item = P> {
+        self.items.into_iter().map(|item| item.1)
+    }
+
+    pub fn iter_both(&self) -> impl Iterator<Item = (&T, Option<&P>)> {
+        self.items
+            .iter()
+            .map(|item| (&item.0, Some(&item.1)))
+            .chain(self.last.as_ref().map(|last| (last.as_ref(), None)))
+    }
+
+    pub fn into_iter_both(self) -> impl Iterator<Item = (T, Option<P>)> {
+        self.items
+            .into_iter()
+            .map(|item| (item.0, Some(item.1)))
+            .chain(self.last.map(|last| (*last, None)))
+    }
+}
+
+impl<T, P, L> Parse for PunctuationLast<T, P, L>
+where
+    T: Parse,
+    P: Parse,
+    L: Parse,
+{
+    fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
+        let mut items = Vec::new();
+
+        while stream.has_next() {
+            let item = stream.parse()?;
+
+            let punct = stream.try_parse();
+            let lpunct = stream.try_parse();
+
+            if lpunct.is_ok() {
+                items.push((item, punct?));
+
+                let item = stream.parse()?;
+
+                return Ok(PunctuationLast {
+                    items,
+                    last_punct: Some(lpunct.unwrap()),
+                    last: Some(Box::new(item)),
+                });
+            }
+
+            match punct {
+                Ok(punct) => items.push((item, punct)),
+                Err(_) if items.len() == 0 => {
+                    return Ok(PunctuationLast {
+                        items,
+                        last_punct: None,
+                        last: Some(Box::new(item)),
+                    });
+                }
+                _ => break,
+            }
+        }
+
+        Err(ParseError::UnexpectedToken {
+            found: stream.peek()?.clone(),
+            expected: "rest of list".into(),
+        })
     }
 }
 

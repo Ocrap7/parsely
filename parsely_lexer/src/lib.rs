@@ -207,6 +207,7 @@ impl Lexer {
             str_arr!("arguments") => consume_kw!(Arguments),
             str_arr!("array") => consume_kw!(ArrayTy),
             str_arr!("boolean") => consume_kw!(BoolTy),
+            str_arr!("by") => consume_kw!(By),
             str_arr!("called") => consume_kw!(Called),
             str_arr!("constant") => consume_kw!(Constant),
             str_arr!("contains") => consume_kw!(Contains),
@@ -226,6 +227,12 @@ impl Lexer {
             str_arr!("value") => consume_kw!(Value),
             str_arr!("variable") => consume_kw!(Variable),
             str_arr!("with") => consume_kw!(With),
+
+            str_arr!("adding") => consume_kw!(Adding),
+            str_arr!("subtracting") => consume_kw!(Subtracting),
+            str_arr!("multiplying") => consume_kw!(Multiplying),
+            str_arr!("dividing") => consume_kw!(Dividing),
+            str_arr!("negating") => consume_kw!(Negating),
 
             _ => panic!("Unknown keyword: {}", kw_slice.iter().collect::<std::string::String>()),
         };

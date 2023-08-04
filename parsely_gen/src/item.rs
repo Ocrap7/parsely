@@ -1,147 +1,124 @@
-use std::fmt::Write;
-
-use parsely_parser::item::{ExternalFunction, Function, Parameter, TopLevelItem};
+use inkwell::{types::BasicTypeEnum, values::PointerValue};
+use parsely_parser::ast::{Noun, Statement, TopLevelItem, VariableInit};
 
 use crate::{
-    module::{Buffers, Module},
+    llvm_value::{Function, Type, TypeFlags, Value, Variable},
+    module::{Module, EMPTY_NAME},
     Result,
 };
 
-impl Module {
-    pub(crate) fn gen_item<HB: Write, CB: Write>(
-        &mut self,
-        buffers: &mut Buffers<'_, '_, HB, CB>,
-        item: &TopLevelItem,
-    ) -> Result<()> {
+impl<'ctx> Module<'ctx> {
+    pub(crate) fn gen_item(&mut self, item: &TopLevelItem) -> Result<()> {
         match item {
-            TopLevelItem::Struct(item) => {
-                let packed = if item.packed.is_some() {
-                    "__attribute__((__packed__)) "
-                } else {
-                    ""
-                };
+            TopLevelItem::Definition(def) => match def.what.noun {
+                Noun::Function(_) => {
+                    let ty = self.context.void_type().fn_type(&[], false);
 
-                if item.export.is_some() && item.opaque.is_some() {
-                    writeln!(buffers.header, "typedef struct {0} {0}; ", item.ident.value)?;
+                    let func = self.module.add_function(&def.ident.value, ty, None);
 
-                    writeln!(
-                        buffers.code,
-                        "typedef struct {}{} {{ ",
-                        packed, item.ident.value
-                    )?;
-                    self.gen_struct_body(buffers.code, item.body.value.iter())?;
-                    writeln!(buffers.code, "}} {};\n", item.ident.value)?;
-                } else if item.export.is_some() {
-                    writeln!(
-                        buffers.header,
-                        "typedef struct {}{} {{ ",
-                        packed, item.ident.value
-                    )?;
-                    self.gen_struct_body(buffers.header, item.body.value.iter())?;
-                    writeln!(buffers.header, "}} {};\n", item.ident.value)?;
-                } else {
-                    writeln!(
-                        buffers.code,
-                        "typedef struct {}{} {{ ",
-                        packed, item.ident.value
-                    )?;
-                    self.gen_struct_body(buffers.code, item.body.value.iter())?;
-                    writeln!(buffers.code, "}} {};\n", item.ident.value)?;
+                    self.alloc_block = Some(self.context.append_basic_block(func, "locals"));
+                    let entry = self.context.append_basic_block(func, "entry");
+                    self.basic_block = Some(entry);
+                    self.builder.position_at_end(entry);
+
+                    let func = Function {
+                        fn_type: ty,
+                        fn_val: func,
+                        param_types: Vec::new(),
+                        return_type: None,
+                    };
+
+                    self.symbol_table.insert_function(&def.ident.value, func);
+                    self.symbol_table.push_scope();
+
+                    for stmt in def.init.as_fn().statements.iter() {
+                        self.gen_statement(stmt)?;
+                    }
+
+                    self.builder.position_at_end(self.alloc_block.unwrap());
+                    self.builder.build_unconditional_branch(entry);
+
+                    let scope = self.symbol_table.pop_scope();
+                    println!("{:#?}", scope);
+
+                    self.basic_block = None;
                 }
-            }
-            TopLevelItem::Function(func) => {
-                self.symbol_table.push_scope();
-
-                if func.export.is_some() {
-                    self.gen_function_signature(buffers.header, func)?;
-                    write!(buffers.header, ";")?;
-                }
-
-                self.gen_function_signature(buffers.code, func)?;
-
-                if func.body.value.len() == 0 {
-                    write!(buffers.code, " {{")?;
-                } else {
-                    writeln!(buffers.code, " {{")?;
-                }
-
-                for item in func.body.value.iter() {
-                    self.gen_statement(buffers.code, item)?;
-                }
-                writeln!(buffers.code, "}}")?;
-
-                let scp = self.symbol_table.pop_scope();
-                println!("{:#?}", scp);
-            }
-            TopLevelItem::ExternalFunction(func) => {
-                if func.export.is_some() {
-                    self.gen_external_function_signature(buffers.header, func)?;
-                } else {
-                    self.gen_external_function_signature(buffers.code, func)?;
-                }
-            }
+                _ => unimplemented!(),
+            },
         }
 
         Ok(())
     }
 
-    fn gen_struct_body<'p, B: Write>(
-        &mut self,
-        buffer: &mut B,
-        body: impl Iterator<Item = &'p Parameter>,
-    ) -> Result<()> {
-        for item in body {
-            self.gen_type(buffer, &item.parameter_type)?;
-            writeln!(buffer, " {};", item.ident.value)?;
+    /// Inserts an alloca instruction at the beginning of the function (the alloc_block)
+    /// 
+    /// I'm not sure if this is necessary but other compilers seem to do this
+    fn insert_alloca(&mut self, ty: &Type<'ctx>, name: &str) -> Result<PointerValue<'ctx>> {
+        let alloc_block = self.alloc_block.expect("Alloc block not set!");
+        let old_block = self.builder.get_insert_block().expect("Block not set");
+        self.builder.position_at_end(alloc_block);
+
+        let alloc = self.builder.build_alloca::<BasicTypeEnum>(
+            ty.llvm
+                .try_into()
+                .expect("Unable to get basic type from any type"),
+            name,
+        );
+        self.builder.position_at_end(old_block);
+
+        Ok(alloc)
+    }
+
+    fn gen_statement(&mut self, statement: &Statement) -> Result<()> {
+        match statement {
+            Statement::Definition(def) => match def.what.noun {
+                Noun::Variable(_) => {
+                    let init = self.gen_variable_init(def.init.as_var())?;
+                    let alloc = self.insert_alloca(&init.ty, &def.ident.value)?;
+
+                    self.builder.build_store(alloc, init.llvm);
+
+                    let var = Variable {
+                        alloc,
+                        flags: TypeFlags::empty(),
+                        ty: init.ty.clone(),
+                    };
+
+                    self.symbol_table.insert_variable(&def.ident.value, var);
+                }
+                Noun::Constant(_) => {
+                    let init = self.gen_variable_init(def.init.as_var())?;
+                    let alloc = self.insert_alloca(&init.ty, &def.ident.value)?;
+
+                    self.builder.build_store(alloc, init.llvm);
+
+                    let var = Variable {
+                        alloc,
+                        flags: TypeFlags::empty(),
+                        ty: init.ty.clone(),
+                    };
+
+                    self.symbol_table.insert_variable(&def.ident.value, var);
+                }
+                _ => unimplemented!(),
+            },
+            Statement::Execute(exe) => match &exe.what.noun {
+                Noun::Function(_) => {
+                    let func = self.symbol_table.find_function(&exe.ident.value)?;
+
+                    self.builder.build_call(func.fn_val, &[], EMPTY_NAME);
+                }
+                t => panic!("{:?} is not callable", t),
+            },
         }
 
         Ok(())
     }
 
-    fn gen_function_signature<'p, B: Write>(
-        &mut self,
-        buffer: &mut B,
-        func: &Function,
-    ) -> Result<()> {
-        self.gen_type(buffer, &func.return_type)?;
-        write!(buffer, " {}", func.ident.value)?;
-
-        write!(buffer, "(")?;
-        self.gen_function_params(buffer, func.params.value.iter())?;
-        write!(buffer, ")")?;
-        Ok(())
-    }
-
-    fn gen_external_function_signature<'p, B: Write>(
-        &mut self,
-        buffer: &mut B,
-        func: &ExternalFunction,
-    ) -> Result<()> {
-        write!(buffer, "extern ")?;
-        self.gen_type(buffer, &func.return_type)?;
-        write!(buffer, " {}", func.ident.value)?;
-
-        write!(buffer, "(")?;
-        self.gen_function_params(buffer, func.params.value.iter())?;
-        write!(buffer, ");")?;
-        Ok(())
-    }
-
-    fn gen_function_params<'p, B: Write>(
-        &mut self,
-        buffer: &mut B,
-        mut params: impl Iterator<Item = &'p Parameter>,
-    ) -> Result<()> {
-        if let Some(item) = params.next() {
-            self.gen_type(buffer, &item.parameter_type)?;
-            writeln!(buffer, "{}", item.ident.value)?;
+    fn gen_variable_init(&mut self, init: &VariableInit) -> Result<Value<'ctx>> {
+        match init {
+            VariableInit::Const(c) => self.gen_expression(&c.value),
+            VariableInit::Mutable(c) => self.gen_expression(&c.value),
         }
-
-        for item in params {
-            self.gen_type(buffer, &item.parameter_type)?;
-            writeln!(buffer, ", {}", item.ident.value)?;
-        }
-
-        Ok(())
     }
 }

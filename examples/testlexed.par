@@ -7,6 +7,9 @@ define (a function) (called "foo") (that
     executes the function called "foo"
 )
 
+    defines a variable called "res" that starts with the result of
+        adding the value of "x" and the value 5
+
 <noun> ::= "function" | "variable"
 <indefinite> ::= "a" <noun>
 <definite> ::= "a" <noun>
@@ -28,3 +31,7 @@ define (a function) (called "foo") (that
 <execute-clause> ::= "executes" <definite>
 
 <definition-init> ::= "do" <function-body> | "that" <variable-init>
+
+<binary-op> ::= "adding" | "subtracting" | "multiplying" | "dividing"
+<unary-op> ::= "negating"
+<operation> ::= <binary-op> <value-lit> "and" <value-lit> | <unary-op> <value-lit> 

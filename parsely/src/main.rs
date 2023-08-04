@@ -5,8 +5,9 @@ use std::{
     str::FromStr,
 };
 
+use parsely_gen::module::Module;
 use parsely_lexer::Lexer;
-use parsely_parser::{ParseStream, ast::Program};
+use parsely_parser::{ast::Program, ParseStream};
 
 fn main() {
     let path = PathBuf::from_str("examples/test.par").unwrap();
@@ -23,7 +24,13 @@ fn main() {
     let program: Program = stream.parse().unwrap();
     println!("{:#?}", program);
 
-    // let module = Module::new(path.file_stem().unwrap().to_string_lossy().as_ref());
+    Module::run_new(
+        path.file_stem().unwrap().to_string_lossy().as_ref(),
+        &program,
+    )
+    .unwrap();
+
+
     // let (header, code) = module.run(&program).unwrap();
 
     // let header_path = path.with_extension("h");

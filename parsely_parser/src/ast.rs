@@ -1,6 +1,6 @@
 use parsely_lexer::tokens::{self, Token};
 
-use crate::{typess, Parse, ParseError, Punctuation};
+use crate::{typess, Parse, ParseError, Punctuation, PunctuationLast};
 
 #[derive(Debug, Clone)]
 pub enum Noun {
@@ -31,8 +31,8 @@ impl Parse for Noun {
 
 #[derive(Debug, Clone)]
 pub struct Indefinite {
-    tok: tokens::A,
-    noun: Noun,
+    pub tok: tokens::A,
+    pub noun: Noun,
 }
 
 impl Parse for Indefinite {
@@ -46,8 +46,8 @@ impl Parse for Indefinite {
 
 #[derive(Debug, Clone)]
 pub struct Definite {
-    tok: tokens::The,
-    noun: Noun,
+    pub tok: tokens::The,
+    pub noun: Noun,
 }
 
 impl Parse for Definite {
@@ -84,9 +84,9 @@ impl Parse for Literal {
 
 #[derive(Debug, Clone)]
 pub struct Value {
-    the_tok: tokens::The,
-    value_tok: tokens::Value,
-    lit: Literal,
+    pub the_tok: tokens::The,
+    pub value_tok: tokens::Value,
+    pub lit: Literal,
 }
 
 impl Parse for Value {
@@ -101,10 +101,10 @@ impl Parse for Value {
 
 #[derive(Debug, Clone)]
 pub struct ResultOf {
-    the_tok: tokens::The,
-    result: tokens::Result,
-    of: tokens::Of,
-    op: Operation,
+    pub the_tok: tokens::The,
+    pub result: tokens::Result,
+    pub of: tokens::Of,
+    pub op: OpList,
 }
 
 impl Parse for ResultOf {
@@ -119,15 +119,38 @@ impl Parse for ResultOf {
 }
 
 #[derive(Debug, Clone)]
+pub struct ValueOf {
+    pub the_tok: tokens::The,
+    pub value_tok: tokens::Value,
+    pub of: tokens::Of,
+    pub ident: tokens::Ident,
+}
+
+impl Parse for ValueOf {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(ValueOf {
+            the_tok: stream.parse()?,
+            value_tok: stream.parse()?,
+            of: stream.parse()?,
+            ident: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Expression {
     Value(Value),
+    ValueOf(ValueOf),
     Result(ResultOf),
 }
 
 impl Parse for Expression {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peekn(1)? {
-            tokens::Tok![enum value] => stream.parse().map(Expression::Value),
+            tokens::Tok![enum value] => match stream.peekn(2) {
+                Ok(tokens::Tok![enum of]) => stream.parse().map(Expression::ValueOf),
+                _ => stream.parse().map(Expression::Value),
+            },
             tokens::Tok![enum result] => stream.parse().map(Expression::Result),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),
@@ -138,13 +161,223 @@ impl Parse for Expression {
 }
 
 #[derive(Debug, Clone)]
-pub enum Operation {
-    //     Add
+pub enum BinOperator {
+    Add(tokens::Adding),
+    Sub(tokens::Subtracting),
+    Mult(tokens::Multiplying),
+    Div(tokens::Dividing),
 }
 
-impl Parse for Operation {
+impl Parse for BinOperator {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        todo!()
+        match stream.peek()? {
+            Token::Adding(a) => Ok(BinOperator::Add(stream.next_ref(a))),
+            Token::Subtracting(a) => Ok(BinOperator::Sub(stream.next_ref(a))),
+            Token::Multiplying(a) => Ok(BinOperator::Mult(stream.next_ref(a))),
+            Token::Dividing(a) => Ok(BinOperator::Div(stream.next_ref(a))),
+            tok => Err(ParseError::UnexpectedToken {
+                found: tok.clone(),
+                expected: "binary operator".into(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum UnaryOperator {
+    Neg(tokens::Negating),
+}
+
+impl Parse for UnaryOperator {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        match stream.peek()? {
+            Token::Negating(n) => Ok(UnaryOperator::Neg(stream.next_ref(n))),
+            tok => Err(ParseError::UnexpectedToken {
+                found: tok.clone(),
+                expected: "unary operator".into(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BinOp {
+    pub op: BinOperator,
+    pub left: Box<Expression>,
+    pub and_tok: tokens::And,
+    pub right: Box<Expression>,
+}
+
+impl Parse for BinOp {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(BinOp {
+            op: stream.parse()?,
+            left: stream.parse()?,
+            and_tok: stream.parse()?,
+            right: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnaryOp {
+    pub op: UnaryOperator,
+    pub expr: Box<Expression>,
+}
+
+impl Parse for UnaryOp {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(UnaryOp {
+            op: stream.parse()?,
+            expr: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OpBy {
+    pub op: BinOperator,
+    pub by: tokens::By,
+    pub expr: Box<Expression>,
+}
+
+impl Parse for OpBy {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(OpBy {
+            op: stream.parse()?,
+            by: stream.parse()?,
+            expr: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnaryImpl {
+    pub op: UnaryOperator,
+}
+
+impl Parse for UnaryImpl {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(UnaryImpl {
+            op: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Operation {
+    BinOp(BinOp),
+    UnaryOp(UnaryOp),
+    OpBy(OpBy),
+    UnaryImpl(UnaryImpl),
+}
+
+#[derive(Debug, Clone)]
+pub enum BinOrUnary {
+    BinOp(BinOp),
+    UnaryOp(UnaryOp),
+}
+
+impl Parse for BinOrUnary {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        if let Ok(op) = stream.parse() {
+            Ok(BinOrUnary::BinOp(BinOp {
+                op,
+                left: stream.parse()?,
+                and_tok: stream.parse()?,
+                right: stream.parse()?,
+            }))
+        } else if let Ok(op) = stream.parse() {
+            Ok(BinOrUnary::UnaryOp(UnaryOp {
+                op,
+                expr: stream.parse()?,
+            }))
+        } else {
+            Err(ParseError::UnexpectedToken {
+                found: stream.peek()?.clone(),
+                expected: "operator".into(),
+            })
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ByOrImpl {
+    OpBy(OpBy),
+    UnaryImpl(UnaryImpl),
+}
+
+impl Parse for ByOrImpl {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        if let Ok(op) = stream.parse() {
+            Ok(ByOrImpl::OpBy(OpBy {
+                op,
+                by: stream.parse()?,
+                expr: stream.parse()?,
+            }))
+        } else if let Ok(op) = stream.parse() {
+            Ok(ByOrImpl::UnaryImpl(UnaryImpl { op }))
+        } else {
+            Err(ParseError::UnexpectedToken {
+                found: stream.peek()?.clone(),
+                expected: "operator".into(),
+            })
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OpList {
+    pub first: Option<BinOrUnary>,
+    pub comma: Option<tokens::Tok![,]>,
+    pub rest: PunctuationLast<ByOrImpl, tokens::Tok![,], tokens::Tok![and]>,
+}
+
+impl OpList {
+    pub fn iter_operation(&self) -> impl Iterator<Item = Operation> + '_ {
+        self.first
+            .as_ref()
+            .map(|op| match op {
+                BinOrUnary::BinOp(bin) => Operation::BinOp(bin.clone()),
+                BinOrUnary::UnaryOp(unary) => Operation::UnaryOp(unary.clone()),
+            })
+            .into_iter()
+            .chain(self.rest.iter().map(|op| match op {
+                ByOrImpl::OpBy(onby) => Operation::OpBy(onby.clone()),
+                ByOrImpl::UnaryImpl(un) => Operation::UnaryImpl(un.clone()),
+            }))
+    }
+}
+
+impl Parse for OpList {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        let first = stream.parse().ok();
+
+        match stream.peek() {
+            Ok(Token::Comma(c)) if first.is_some() => {
+                let comma = stream.next_ref(c);
+                let rest: PunctuationLast<ByOrImpl, tokens::Tok![,], tokens::Tok![and]> =
+                    stream.parse()?;
+
+                if rest.len() <= 0 {
+                    return Err(ParseError::UnexpectedToken {
+                        found: Token::Comma(comma.clone()),
+                        expected: "operations".into(),
+                    });
+                }
+
+                Ok(OpList {
+                    first,
+                    comma: Some(comma),
+                    rest: rest,
+                })
+            }
+            _ => Ok(OpList {
+                first,
+                comma: None,
+                rest: PunctuationLast::empty(),
+            }),
+        }
     }
 }
 
@@ -169,10 +402,10 @@ impl Parse for Statement {
 
 #[derive(Debug, Clone)]
 pub struct Execute {
-    exe_tok: tokens::Executes,
-    what: Definite,
-    called_tok: tokens::Called,
-    ident: tokens::Ident,
+    pub exe_tok: tokens::Executes,
+    pub what: Definite,
+    pub called_tok: tokens::Called,
+    pub ident: tokens::Ident,
 }
 
 impl Parse for Execute {
@@ -188,7 +421,7 @@ impl Parse for Execute {
 
 #[derive(Debug, Clone)]
 pub struct BlockList {
-    statements: Punctuation<Statement, tokens::Then>,
+    pub statements: Punctuation<Statement, tokens::Then>,
 }
 
 impl Parse for BlockList {
@@ -201,9 +434,9 @@ impl Parse for BlockList {
 
 #[derive(Debug, Clone)]
 pub struct MutableInit {
-    starts_tok: tokens::Starts,
-    with_tok: tokens::With,
-    value: Expression,
+    pub starts_tok: tokens::Starts,
+    pub with_tok: tokens::With,
+    pub value: Expression,
 }
 
 impl Parse for MutableInit {
@@ -218,8 +451,8 @@ impl Parse for MutableInit {
 
 #[derive(Debug, Clone)]
 pub struct ConstantInit {
-    contains_tok: tokens::Contains,
-    value: Expression,
+    pub contains_tok: tokens::Contains,
+    pub value: Expression,
 }
 
 impl Parse for ConstantInit {
@@ -252,8 +485,24 @@ impl Parse for VariableInit {
 
 #[derive(Debug, Clone)]
 pub enum Init {
-    Function(BlockList),
     Variable(VariableInit),
+    Function(BlockList),
+}
+
+impl Init {
+    pub fn as_var(&self) -> &VariableInit {
+        match self {
+            Init::Variable(var) => var,
+            _ => panic!("Expected variable!"),
+        }
+    }
+
+    pub fn as_fn(&self) -> &BlockList {
+        match self {
+            Init::Function(func) => func,
+            _ => panic!("Expected fucntion!"),
+        }
+    }
 }
 
 impl Parse for Init {
@@ -301,13 +550,13 @@ impl Parse for Arguments {
 
 #[derive(Debug, Clone)]
 pub struct Definition {
-    def_tok: tokens::Define,
-    what: Indefinite,
-    called_tok: tokens::Called,
-    ident: tokens::Ident,
-    args: Option<Arguments>,
-    that_tok: tokens::That,
-    init: Init,
+    pub def_tok: tokens::Define,
+    pub what: Indefinite,
+    pub called_tok: tokens::Called,
+    pub ident: tokens::Ident,
+    pub args: Option<Arguments>,
+    pub that_tok: tokens::That,
+    pub init: Init,
 }
 
 impl Parse for Definition {
@@ -337,13 +586,13 @@ impl Parse for Definition {
 
 #[derive(Debug, Clone)]
 pub struct DefinitionAction {
-    def_tok: tokens::Defines,
-    what: Indefinite,
-    called_tok: tokens::Called,
-    ident: tokens::Ident,
-    args: Option<Arguments>,
-    that_tok: tokens::That,
-    init: Init,
+    pub def_tok: tokens::Defines,
+    pub what: Indefinite,
+    pub called_tok: tokens::Called,
+    pub ident: tokens::Ident,
+    pub args: Option<Arguments>,
+    pub that_tok: tokens::That,
+    pub init: Init,
 }
 
 impl Parse for DefinitionAction {
@@ -367,14 +616,31 @@ impl Parse for DefinitionAction {
 }
 
 #[derive(Debug, Clone)]
+pub enum TopLevelItem {
+    Definition(Definition),
+}
+
+impl Parse for TopLevelItem {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        match stream.peek()? {
+            tokens::Tok![enum define] => stream.parse().map(TopLevelItem::Definition),
+            tok => Err(ParseError::UnexpectedToken {
+                found: tok.clone(),
+                expected: "top level item".into(),
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Program {
-    defs: Vec<Definition>,
+    pub items: Vec<TopLevelItem>,
 }
 
 impl Parse for Program {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         Ok(Program {
-            defs: stream.parse()?,
+            items: stream.parse()?,
         })
     }
 }

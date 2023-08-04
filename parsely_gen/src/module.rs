@@ -1,51 +1,67 @@
-use std::{fmt::Write, io};
+use std::{fs::File, io::Write};
 
-use parsely_parser::item::{Program, TopLevelItem};
+use parsely_parser::ast::Program;
 
 use crate::{symbols::SymbolTable, Result};
 
-pub(crate) struct Buffers<'hdr, 'code, HB: Write, CB: Write> {
-    pub(crate) header: &'hdr mut HB,
-    pub(crate) code: &'code mut CB,
-}
+pub(crate) const EMPTY_NAME: &str = "";
 
-pub struct Module {
+pub struct Module<'ctx> {
+    pub(crate) context: &'ctx inkwell::context::Context,
+    pub(crate) module: inkwell::module::Module<'ctx>,
     pub(crate) name: String,
-    pub(crate) symbol_table: SymbolTable,
+    pub(crate) symbol_table: SymbolTable<'ctx>,
+
+    pub(crate) builder: inkwell::builder::Builder<'ctx>,
+    pub(crate) alloc_block: Option<inkwell::basic_block::BasicBlock<'ctx>>,
+    pub(crate) basic_block: Option<inkwell::basic_block::BasicBlock<'ctx>>,
 }
 
-impl Module {
-    pub fn new(name: impl ToString) -> Module {
+impl<'ctx> Module<'ctx> {
+    pub fn new(name: impl ToString, context: &'ctx inkwell::context::Context) -> Module {
         Module {
+            module: context.create_module(&name.to_string()),
             name: name.to_string(),
             symbol_table: SymbolTable::new(),
+            builder: context.create_builder(),
+            alloc_block: None,
+            basic_block: None,
+            context,
         }
     }
 
-    pub fn run(mut self, program: &Program) -> Result<(String, String)> {
-        let mut header = String::with_capacity(256);
-        let mut code = String::with_capacity(256);
+    pub fn run_new(name: impl ToString, program: &Program) -> Result<()> {
+        let ctx = inkwell::context::Context::create();
 
-        let mut buffers = Buffers {
-            header: &mut header,
-            code: &mut code,
+        let mut module = Module {
+            module: ctx.create_module(&name.to_string()),
+            name: name.to_string(),
+            symbol_table: SymbolTable::new(),
+            builder: ctx.create_builder(),
+            alloc_block: None,
+            basic_block: None,
+            context: &ctx,
         };
 
-        write!(
-            buffers.header,
-            "#ifndef {}\n#define {}\n",
-            self.name, self.name
-        )?;
+        module.symbol_table.push_scope();
 
-        writeln!(buffers.header, "#include \"../lib/core.h\"")?;
-        writeln!(buffers.code, "#include \"{}.h\"", self.name)?;
+        module.run(program).map(|module| {
+            println!("{:#?}", module.symbol_table);
+            let output = module.module.to_string();
 
-        for item in program.items.iter() {
-            self.gen_item(&mut buffers, item)?;
+            let mut file = File::create("out.ir").unwrap();
+            write!(file, "{}", output).unwrap();
+        })
+    }
+
+    pub(crate) fn bb(&self) -> &inkwell::basic_block::BasicBlock<'ctx> {
+        self.basic_block.as_ref().expect("Expected basic block!")
+    }
+
+    pub fn run(mut self, program: &Program) -> Result<Module<'ctx>> {
+        for item in &program.items {
+            self.gen_item(item)?;
         }
-
-        write!(buffers.header, "\n#endif")?;
-
-        Ok((header, code))
+        Ok(self)
     }
 }

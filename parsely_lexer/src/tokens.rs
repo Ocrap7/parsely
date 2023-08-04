@@ -319,6 +319,7 @@ define_tokens! {
         Arguments = arguments,
         ArrayTy = array,
         BoolTy = boolean,
+        By = by,
         Called = called,
         Constant = constant,
         Contains = contains,
@@ -338,6 +339,14 @@ define_tokens! {
         Value = value,
         Variable = variable,
         With = with,
+
+        // Operator
+        Adding = adding,
+        Subtracting = subtracting,
+        Multiplying = multiplying,
+        Dividing = dividing,
+
+        Negating = negating,
 
         // Punctuation
         Semi = ;,

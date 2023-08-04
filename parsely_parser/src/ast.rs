@@ -1,12 +1,18 @@
 use parsely_lexer::tokens::{self, Token};
 
-use crate::{Parse, ParseError, Punctuation};
+use crate::{typess, Parse, ParseError, Punctuation};
 
 #[derive(Debug, Clone)]
 pub enum Noun {
     Function(tokens::Function),
     Variable(tokens::Variable),
     Constant(tokens::Constant),
+}
+
+impl Noun {
+    pub fn is_fn(&self) -> bool {
+        matches!(self, Noun::Function(_))
+    }
 }
 
 impl Parse for Noun {
@@ -262,22 +268,67 @@ impl Parse for Init {
 }
 
 #[derive(Debug, Clone)]
+pub struct Argument {
+    ident: tokens::Ident,
+    ty: typess::OfType,
+}
+
+impl Parse for Argument {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(Argument {
+            ident: stream.parse()?,
+            ty: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Arguments {
+    with_tok: tokens::With,
+    args_tok: tokens::Arguments,
+    args: Punctuation<Argument, tokens::Comma>,
+}
+
+impl Parse for Arguments {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(Arguments {
+            with_tok: stream.parse()?,
+            args_tok: stream.parse()?,
+            args: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Definition {
     def_tok: tokens::Define,
     what: Indefinite,
     called_tok: tokens::Called,
     ident: tokens::Ident,
+    args: Option<Arguments>,
     that_tok: tokens::That,
     init: Init,
 }
 
 impl Parse for Definition {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        let def_tok = stream.parse()?;
+        let what: Indefinite = stream.parse()?;
+        let called_tok = stream.parse()?;
+        let ident = stream.parse()?;
+
+        let args = if what.noun.is_fn() && matches!(stream.peek()?, Token::With(_)) {
+            Some(stream.parse()?)  
+        } else {
+            None
+        };
+    
         Ok(Definition {
-            def_tok: stream.parse()?,
-            what: stream.parse()?,
-            called_tok: stream.parse()?,
-            ident: stream.parse()?,
+            def_tok,
+            what,
+            called_tok,
+            ident,
+            args,
             that_tok: stream.parse()?,
             init: stream.parse()?,
         })
@@ -290,19 +341,27 @@ pub struct DefinitionAction {
     what: Indefinite,
     called_tok: tokens::Called,
     ident: tokens::Ident,
+    args: Option<Arguments>,
     that_tok: tokens::That,
     init: Init,
 }
 
 impl Parse for DefinitionAction {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        let def_tok = stream.parse()?;
+        let what: Indefinite = stream.parse()?;
+
         Ok(DefinitionAction {
-            def_tok: stream.parse()?,
-            what: stream.parse()?,
             called_tok: stream.parse()?,
             ident: stream.parse()?,
+            args: match what.noun.is_fn().then(|| stream.parse()) {
+                Some(s) => s?,
+                None => None,
+            },
             that_tok: stream.parse()?,
             init: stream.parse()?,
+            def_tok,
+            what,
         })
     }
 }

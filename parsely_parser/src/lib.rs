@@ -7,6 +7,7 @@ use parsely_lexer::tokens::Token;
 // pub mod statement;
 mod tokens;
 pub mod ast;
+pub mod typess;
 // pub mod types;
 
 /// Represents an error while parsing

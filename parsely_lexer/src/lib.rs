@@ -28,7 +28,10 @@ impl Position {
     pub fn join(self, other: Position) -> Span {
         Span {
             start: self,
-            end: other,
+            end: Position {
+                line: other.line,
+                column: other.column + 1,
+            },
         }
     }
 }
@@ -145,6 +148,8 @@ impl Lexer {
             }
         }
 
+        tokens.push(Token::Eof);
+
         tokens
     }
 
@@ -192,58 +197,33 @@ impl Lexer {
             return token;
         }
 
+        use parsely_macros::*;
         let token = match kw_slice {
-            /* true */
-            ['t', 'r', 'u', 'e'] => Some(Bool::from_value(true, slice, self.make_position())),
-            /* false */
-            ['f', 'a', 'l', 's', 'e'] => Some(Bool::from_value(false, slice, self.make_position())),
+            str_arr!("true") => Some(Bool::from_value(true, slice, self.make_position())),
+            str_arr!("false") => Some(Bool::from_value(false, slice, self.make_position())),
 
-            /* Const */
-            ['c', 'o', 'n', 's', 't'] => Some(Const::from_span_start(self.make_position())),
-            /* Continue */
-            ['c', 'o', 'n', 't', 'i', 'n', 'u', 'e'] => {
-                Some(Continue::from_span_start(self.make_position()))
-            }
-            /* Break */
-            ['b', 'r', 'e', 'a', 'k'] => Some(Break::from_span_start(self.make_position())),
-            /* Else */
-            ['e', 'l', 's', 'e'] => Some(Else::from_span_start(self.make_position())),
-            /* Enum */
-            ['e', 'n', 'u', 'm'] => Some(Enum::from_span_start(self.make_position())),
-            /* Export */
-            ['e', 'x', 'p', 'o', 'r', 't'] => Some(Export::from_span_start(self.make_position())),
-            /* External */
-            ['e', 'x', 't', 'e', 'r', 'n', 'a', 'l'] => {
-                Some(External::from_span_start(self.make_position()))
-            }
-            /* For */ ['f', 'o', 'r'] => Some(For::from_span_start(self.make_position())),
-            /* If */ ['i', 'f'] => Some(If::from_span_start(self.make_position())),
-            /* Match */
-            ['m', 'a', 't', 'c', 'h'] => Some(Match::from_span_start(self.make_position())),
-            /* Nones */
-            ['n', 'o', 'n', 'e'] => Some(Nones::from_span_start(self.make_position())),
-            ['o', 'p', 'a', 'q', 'u', 'e'] => Some(Opaque::from_span_start(self.make_position())),
-            ['p', 'a', 'c', 'k', 'e', 'd'] => Some(Packed::from_span_start(self.make_position())),
-            /* Persist */
-            ['p', 'e', 'r', 's', 'i', 's', 't'] => {
-                Some(Persist::from_span_start(self.make_position()))
-            }
-            /* Return */
-            ['r', 'e', 't', 'u', 'r', 'n'] => Some(Return::from_span_start(self.make_position())),
-            /* Struct */
-            ['s', 't', 'r', 'u', 'c', 't'] => Some(Struct::from_span_start(self.make_position())),
-            /* Typedef */
-            ['t', 'y', 'p', 'e', 'd', 'e', 'f'] => {
-                Some(Typedef::from_span_start(self.make_position()))
-            }
-            /* Typeof */
-            ['t', 'y', 'p', 'e', 'o', 'f'] => Some(Typeof::from_span_start(self.make_position())),
-            /* Void */
-            ['v', 'o', 'i', 'd'] => Some(Void::from_span_start(self.make_position())),
-            /* While */
-            ['w', 'h', 'i', 'l', 'e'] => Some(While::from_span_start(self.make_position())),
-            c => Some(Ident::from_span_start(c, self.make_position())),
+            str_arr!("a") => consume_kw!(A),
+            str_arr!("and") => consume_kw!(And),
+            str_arr!("called") => consume_kw!(Called),
+            str_arr!("constant") => consume_kw!(Constant),
+            str_arr!("contains") => consume_kw!(Contains),
+            str_arr!("define") => consume_kw!(Define),
+            str_arr!("defines") => consume_kw!(Defines),
+            str_arr!("executes") => consume_kw!(Executes),
+            str_arr!("function") => consume_kw!(Function),
+            str_arr!("of") => consume_kw!(Of),
+            str_arr!("result") => consume_kw!(Result),
+            str_arr!("starts") => consume_kw!(Starts),
+            str_arr!("that") => consume_kw!(That),
+            str_arr!("then") => consume_kw!(Then),
+            str_arr!("the") => consume_kw!(The),
+            str_arr!("value") => consume_kw!(Value),
+            str_arr!("variable") => consume_kw!(Variable),
+            str_arr!("with") => consume_kw!(With),
+
+            _ => panic!("Unknown keyword: {}", kw_slice.iter().collect::<std::string::String>()),
         };
+
 
         self.index += kw_slice.len();
         self.column += kw_slice.len();
@@ -251,24 +231,51 @@ impl Lexer {
         token
     }
 
-    fn try_string(&mut self) -> Option<Token> {
+    fn try_string_or_ident(&mut self) -> Option<Token> {
         let char = *self.chars.get(self.index)?;
         match char {
-            '"' => {
+            '\'' => {
                 let open = self.make_position();
                 self.index += 1;
+                self.column += 1;
 
                 let slice = self.chars.get(self.index..)?;
 
                 let ind = slice.iter().position(|c| *c == '"').unwrap();
 
-                let close = self.make_position();
                 let slice = &slice[..ind];
+                self.index += slice.len();
+                self.column += slice.len();
 
-                self.index += slice.len() + 1;
-                self.column += slice.len() + 1;
+                let close = self.make_position();
+
+                self.index += 1;
+                self.column += 1;
 
                 Some(Token::String(String {
+                    value: slice.iter().collect(),
+                    span: open.join(close),
+                }))
+            }
+            '"' => {
+                let open = self.make_position();
+                self.index += 1;
+                self.column += 1;
+
+                let slice = self.chars.get(self.index..)?;
+
+                let ind = slice.iter().position(|c| *c == '"').unwrap();
+
+                let slice = &slice[..ind];
+                self.index += slice.len();
+                self.column += slice.len();
+
+                let close = self.make_position();
+
+                self.index += 1;
+                self.column += 1;
+
+                Some(Token::Ident(Ident {
                     value: slice.iter().collect(),
                     span: open.join(close),
                 }))
@@ -353,49 +360,12 @@ impl Lexer {
         let token = match (char, char_1, char_2) {
             // Keywords and identifiers
             ('a'..='z' | '0'..='9', _, _) => return Some(self.try_keyword_or_ident()),
-            ('"', _, _) => return Some(self.try_string()),
+            ('"', _, _) => return Some(self.try_string_or_ident()),
 
             // Punctuation
             (';', _, _) => Some(Semi::from_span_start(self.make_position())),
             (':', _, _) => Some(Colon::from_span_start(self.make_position())),
             (',', _, _) => Some(Comma::from_span_start(self.make_position())),
-            ('#', _, _) => Some(Pound::from_span_start(self.make_position())),
-
-            // Operators
-            ('&', Some('='), _) => Some(AndEq::from_span_start(self.make_position())),
-            ('&', Some('&'), _) => Some(LogicalAnd::from_span_start(self.make_position())),
-            ('&', _, _) => Some(And::from_span_start(self.make_position())),
-            ('=', Some('='), _) => Some(Eq::from_span_start(self.make_position())),
-            ('=', _, _) => Some(Assign::from_span_start(self.make_position())),
-            ('.', Some('.'), _) => Some(Range::from_span_start(self.make_position())),
-            ('.', _, _) => Some(Dot::from_span_start(self.make_position())),
-            ('>', Some('>'), Some('=')) => {
-                Some(RightShiftEq::from_span_start(self.make_position()))
-            }
-            ('>', Some('>'), _) => Some(RightShift::from_span_start(self.make_position())),
-            ('>', Some('='), _) => Some(GtEq::from_span_start(self.make_position())),
-            ('>', _, _) => Some(Gt::from_span_start(self.make_position())),
-            ('<', Some('<'), Some('=')) => Some(LeftShiftEq::from_span_start(self.make_position())),
-            ('<', Some('<'), _) => Some(LeftShift::from_span_start(self.make_position())),
-            ('|', Some('|'), _) => Some(LogicalOr::from_span_start(self.make_position())),
-            ('|', Some('='), _) => Some(OrEq::from_span_start(self.make_position())),
-            ('|', _, _) => Some(Or::from_span_start(self.make_position())),
-            ('<', Some('='), _) => Some(LtEq::from_span_start(self.make_position())),
-            ('<', _, _) => Some(Lt::from_span_start(self.make_position())),
-            ('-', Some('='), _) => Some(MinusEq::from_span_start(self.make_position())),
-            ('-', _, _) => Some(Minus::from_span_start(self.make_position())),
-            ('!', Some('='), _) => Some(NotEq::from_span_start(self.make_position())),
-            ('!', _, _) => Some(Not::from_span_start(self.make_position())),
-            ('+', Some('='), _) => Some(PlusEq::from_span_start(self.make_position())),
-            ('+', _, _) => Some(Plus::from_span_start(self.make_position())),
-            ('%', Some('='), _) => Some(RemEq::from_span_start(self.make_position())),
-            ('%', _, _) => Some(Rem::from_span_start(self.make_position())),
-            ('/', Some('='), _) => Some(SlashEq::from_span_start(self.make_position())),
-            ('/', _, _) => Some(Slash::from_span_start(self.make_position())),
-            ('*', Some('='), _) => Some(StarEq::from_span_start(self.make_position())),
-            ('*', _, _) => Some(Star::from_span_start(self.make_position())),
-            ('^', Some('='), _) => Some(XorEq::from_span_start(self.make_position())),
-            ('^', _, _) => Some(Xor::from_span_start(self.make_position())),
 
             // Whitespace
             ('\r', Some('\n'), _) => {
@@ -435,69 +405,23 @@ mod tests {
     use super::*;
 
     #[test]
-    pub fn simple_test() {
-        let input = r"
-export struct data {
-    int32 i = 8;
-}
+    fn test_basic() {
+        let input = r#"
+define a function called "x"
+"#;
+        let tokens = Lexer::run(input);
 
-external void main() {
-
-}
-";
-
-        let tokens = Lexer::run(input.as_bytes());
-        println!("{:#?}", tokens);
-
-        assert_eq!(
+        assert_eq!(tokens,
             vec![
-                Token::Export(Export(span!(1:0-6))),
-                Token::Struct(Struct(span!(1:7-13))),
+                Token::Define(Define(span!(1:0-6))),
+                Token::A(A(span!(1:7-8))),
+                Token::Function(Function(span!(1:9-17))),
+                Token::Called(Called(span!(1:18-24))),
                 Token::Ident(Ident {
-                    value: "data".to_string(),
-                    span: span!(1:14-18)
-                }),
-                Token::Group(Group {
-                    open: span!(1:19-20),
-                    close: span!(3:0-1),
-                    bracket: GroupBracket::Brace,
-                    tokens: vec![
-                        Token::Ident(Ident {
-                            value: "int32".to_string(),
-                            span: span!(2:4-9)
-                        }),
-                        Token::Ident(Ident {
-                            value: "i".to_string(),
-                            span: span!(2:10-11)
-                        }),
-                        Token::Assign(Assign(span!(2:12-13))),
-                        Token::Int(Int {
-                            value: 8,
-                            span: span!(2:14-15)
-                        }),
-                        Token::Semi(Semi(span!(2:15-16))),
-                    ]
-                }),
-                Token::External(External(span!(5:0-8))),
-                Token::Void(Void(span!(5:9-13))),
-                Token::Ident(Ident {
-                    value: "main".to_string(),
-                    span: span!(5:14-18)
-                }),
-                Token::Group(Group {
-                    open: span!(5:18-19),
-                    close: span!(5:19-20),
-                    bracket: GroupBracket::Paren,
-                    tokens: vec![]
-                }),
-                Token::Group(Group {
-                    open: span!(5:21-22),
-                    close: span!(7:0-1),
-                    bracket: GroupBracket::Brace,
-                    tokens: vec![]
-                }),
-            ],
-            tokens.as_slice()
-        );
+                    value: "x".into(),
+                    span: span!(1:25-28),
+                })
+            ]
+        )
     }
 }

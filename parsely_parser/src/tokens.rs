@@ -1,4 +1,4 @@
-use parsely_lexer::tokens::{self, Token, Group};
+use parsely_lexer::tokens::{self, Token};
 
 use crate::{Parse, ParseError, Result};
 
@@ -22,65 +22,29 @@ macro_rules! impl_token_parse {
 
 impl_token_parse! {
     // Keyword
-    Const,
-    Continue,
-    Break,
-    Else,
-    Enum,
-    Export,
-    External,
-    For,
-    If,
-    Match,
-    Nones,
-    Opaque,
-    Packed,
-    Persist,
-    Return,
-    Struct,
-    Typedef,
-    Typeof,
-    Void,
-    While,
+    A,
+    And,
+    Called,
+    Constant,
+    Contains,
+    Define,
+    Defines,
+    Executes,
+    Function,
+    Of,
+    Result,
+    Starts,
+    That,
+    Then,
+    The,
+    Value,
+    Variable,
+    With,
 
     // Punctuation
     Semi,
     Colon,
     Comma,
-    Pound,
-
-    // Operators
-    And,
-    AndEq,
-    Assign,
-    Eq,
-    Dot,
-    Gt,
-    GtEq,
-    LeftShift,
-    LeftShiftEq,
-    LogicalAnd,
-    LogicalOr,
-    Lt,
-    LtEq,
-    Minus,
-    MinusEq,
-    Not,
-    NotEq,
-    Or,
-    Plus,
-    PlusEq,
-    Range,
-    Rem,
-    RemEq,
-    RightShift,
-    RightShiftEq,
-    Slash,
-    SlashEq,
-    Star,
-    StarEq,
-    Xor,
-    XorEq,
 
     Ident,
     Int,
@@ -89,12 +53,3 @@ impl_token_parse! {
     String,
     Char,
 }
-
-pub trait ParseGrouped {
-
-}
-
-impl ParseGrouped for Group {
-
-}
-

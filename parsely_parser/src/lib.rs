@@ -2,11 +2,12 @@ use std::{cell::Cell, fmt::Display};
 
 use parsely_lexer::tokens::Token;
 
-pub mod expr;
-pub mod item;
-pub mod statement;
+// pub mod expr;
+// pub mod item;
+// pub mod statement;
 mod tokens;
-pub mod types;
+pub mod ast;
+// pub mod types;
 
 /// Represents an error while parsing
 #[derive(Debug)]
@@ -90,6 +91,10 @@ impl ParseStream<'_> {
             .ok_or(ParseError::UnexpectedEnd {})
     }
 
+    pub fn peek_eof(&self) -> bool {
+        matches!(self.peek(), Ok(Token::Eof))
+    }
+
     /// Increment the current token without returning it
     pub fn increment(&self) {
         let value = self.index.take();
@@ -153,7 +158,7 @@ where
 {
     fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
         let mut items = Vec::new();
-        while stream.has_next() {
+        while stream.has_next() && !stream.peek_eof() {
             items.push(stream.parse()?)
         }
         Ok(items)
@@ -395,12 +400,15 @@ where
         let mut last = None;
 
         while stream.has_next() {
-            let item = stream.parse().unwrap();
-            if stream.has_next() {
-                let punct = stream.parse().unwrap();
-                items.push((item, punct));
-            } else {
-                last = Some(Box::new(item));
+            let item = stream.parse()?;
+
+            let punct = stream.parse();
+            match punct {
+                Ok(punct) => items.push((item, punct)),
+                _ => {
+                    last = Some(Box::new(item));
+                    break
+                }
             }
         }
 

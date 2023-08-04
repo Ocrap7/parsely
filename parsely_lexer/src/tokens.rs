@@ -30,7 +30,7 @@ macro_rules! define_tokens {
             }
 
             impl std::fmt::Display for $struct_name {
-                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
                     write!(f, "{}", stringify!($st))
                 }
             }
@@ -45,6 +45,7 @@ macro_rules! define_tokens {
             String(String),
             Char(Char),
             Group(Group),
+            Eof,
            $(
                 $struct_name($struct_name)
            ),*
@@ -60,6 +61,7 @@ macro_rules! define_tokens {
                     $token_enum::String(i) => i.span.len(),
                     $token_enum::Char(i) => i.span.len(),
                     $token_enum::Group(_) => 0,
+                    $token_enum::Eof => 0,
                     $(
                         $token_enum::$struct_name(_) => $struct_name::len()
                     ),*
@@ -81,7 +83,7 @@ macro_rules! define_tokens {
         }
 
         impl std::fmt::Display for $token_enum {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
                 match self {
                     $token_enum::Ident(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Int(i) => std::fmt::Display::fmt(i, f),
@@ -90,6 +92,7 @@ macro_rules! define_tokens {
                     $token_enum::String(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Char(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Group(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::Eof => write!(f, "eof"),
                     $(
                         $token_enum::$struct_name(tok) => std::fmt::Display::fmt(tok, f)
                     ),*
@@ -311,66 +314,29 @@ define_tokens! {
     Tok;
     pub enum Token {
         // Keyword
-        Const = const,
-        Continue = continue,
-        Break = break,
-        Else = else,
-        Enum = enum,
-        Export = export,
-        External = external,
-        For = for,
-        If = if,
-        Match = match,
-        Nones = none,
-        Opaque = opaque,
-        Packed = packed,
-        Persist = persist,
-        Return = return,
-        Struct = struct,
-        Typedef = typedef,
-        Typeof = typeof,
-        Void = void,
-        While = while,
+        A = a,
+        And = and,
+        Called = called,
+        Constant = constant,
+        Contains = contains,
+        Define = define,
+        Defines = defines,
+        Executes = executes,
+        Function = function,
+        Of = of,
+        Result = result,
+        Starts = starts,
+        That = that,
+        Then = then,
+        The = the,
+        Value = value,
+        Variable = variable,
+        With = with,
 
         // Punctuation
         Semi = ;,
-        Colon = :,
         Comma = ,,
-        Pound = #,
-
-        // Operators
-        And = &,
-        AndEq = &=,
-        Assign = =,
-        Eq = ==,
-        Dot = .,
-        Gt = >,
-        GtEq = >=,
-        LeftShift = <<,
-        LeftShiftEq = <<=,
-        LogicalAnd = &&,
-        LogicalOr = ||,
-        Lt = <,
-        LtEq = <=,
-        Minus = -,
-        MinusEq = -=,
-        Not = !,
-        NotEq = !=,
-        Or = |,
-        OrEq = |=,
-        Plus = +,
-        PlusEq = +=,
-        Range = ..,
-        Rem = %,
-        RemEq = %=,
-        RightShift = >>,
-        RightShiftEq = >>=,
-        Slash = /,
-        SlashEq = /=,
-        Star = *,
-        StarEq = *=,
-        Xor = ^,
-        XorEq = ^=,
+        Colon = :,
     }
 }
 

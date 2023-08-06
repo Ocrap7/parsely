@@ -12,3 +12,4 @@ thiserror = "1.0.44"
 
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm15-0", "llvm15-0-force-dynamic"] }
 bitflags = "2.3.3"
+colored = "2.0.4"

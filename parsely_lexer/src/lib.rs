@@ -3,12 +3,16 @@ use tokens::*;
 #[macro_use]
 pub mod tokens;
 
+pub trait AsSpan {
+    fn as_span(&self) -> Span;
+}
+
 /// Represents a single position in a source file
 ///
 /// `line` line in the file (starting at 0)
 /// `column` in the line (starting at 0)
 ///
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     pub line: usize,
     pub column: usize,
@@ -37,11 +41,95 @@ impl Position {
 }
 
 /// Represents a range in a file
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct Span {
     pub start: Position,
     pub end: Position,
 }
+
+
+
+impl Default for Span {
+    fn default() -> Self {
+        Span::EMPTY
+    }
+}
+
+impl <T: AsSpan> AsSpan for &T {
+    fn as_span(&self) -> Span {
+        AsSpan::as_span(*self)
+    }
+}
+
+impl <T: AsSpan> AsSpan for Box<T> {
+    fn as_span(&self) -> Span {
+        self.as_ref().as_span()
+    }
+}
+
+impl<L, R> From<(L, R)> for Span
+where
+    L: AsSpan,
+    R: AsSpan,
+{
+    fn from(value: (L, R)) -> Self {
+        Span {
+            start: value.0.as_span().start,
+            end: value.1.as_span().end,
+        }
+    }
+}
+
+impl AsSpan for (Span, Span) {
+    fn as_span(&self) -> Span {
+        Span {
+            start: self.0.start,
+            end: self.1.end,
+        }
+    }
+}
+
+impl AsSpan for (Position, Position) {
+    fn as_span(&self) -> Span {
+        Span {
+            start: self.0,
+            end: self.1,
+        }
+    }
+}
+
+impl <T: AsSpan> AsSpan for Vec<T> {
+    fn as_span(&self) -> Span {
+        let first = self.first().unwrap();
+        let last = self.last().unwrap();
+        first.as_span().join(last.as_span())
+    }
+}
+
+// impl <T: Into<Span>> AsSpan for T {
+//     fn as_span(&self) -> Span {
+//         self.into()
+//     }
+// }
+
+impl <L: AsSpan, R: AsSpan> AsSpan for (L, R) {
+    fn as_span(&self) -> Span {
+        Span {
+            start: self.0.as_span().start,
+            end: self.1.as_span().end,
+        }
+    }
+}
+
+// impl <T: AsRef<>>
+
+// impl <T
+
+// impl<T: AsSpan, R: AsRef<T>> AsSpan for R {
+//     fn as_span(&self) -> Span {
+//         self.as_ref().clone()
+//     }
+// }
 
 #[macro_export]
 macro_rules! span {
@@ -72,6 +160,14 @@ impl Span {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn contains(&self, other: &Span) -> bool {
+        self.start <= other.start && self.end >= other.end
+    }
+
+    pub fn contains_position(&self, position: &Position) -> bool {
+        self.start <= *position && self.end >= *position
     }
 
     pub fn join(self, other: Span) -> Span {
@@ -234,9 +330,11 @@ impl Lexer {
             str_arr!("dividing") => consume_kw!(Dividing),
             str_arr!("negating") => consume_kw!(Negating),
 
-            _ => panic!("Unknown keyword: {}", kw_slice.iter().collect::<std::string::String>()),
+            _ => panic!(
+                "Unknown keyword: {}",
+                kw_slice.iter().collect::<std::string::String>()
+            ),
         };
-
 
         self.index += kw_slice.len();
         self.column += kw_slice.len();
@@ -424,7 +522,8 @@ define a function called "x"
 "#;
         let tokens = Lexer::run(input);
 
-        assert_eq!(tokens,
+        assert_eq!(
+            tokens,
             vec![
                 Token::Define(Define(span!(1:0-6))),
                 Token::A(A(span!(1:7-8))),

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     llvm_value::{Function, Type, Variable},
-    GenError, Result,
+    Diagnostic, Result,
 };
 
 #[derive(Debug)]
@@ -42,11 +42,10 @@ impl<'ctx> SymbolTable<'ctx> {
         }
     }
 
-    pub fn find_variable(&self, name: &str) -> Result<&Variable<'ctx>> {
+    pub fn find_variable(&self, name: &str) -> Option<&Variable<'ctx>> {
         self.iter_variable()
             .rev()
             .find_map(|map| map.get(name))
-            .ok_or_else(|| GenError::SymbolNotFound(name.to_string()))
     }
 
     pub fn find_variable_in_current(&self, name: &str) -> Option<&Variable<'ctx>> {
@@ -80,11 +79,10 @@ impl<'ctx> SymbolTable<'ctx> {
         }
     }
 
-    pub fn find_function(&self, name: &str) -> Result<&Function<'ctx>> {
+    pub fn find_function(&self, name: &str) -> Option<&Function<'ctx>> {
         self.iter_functions()
             .rev()
             .find_map(|map| map.get(name))
-            .ok_or_else(|| GenError::SymbolNotFound(name.to_string()))
     }
 
     pub fn find_function_in_current(&self, name: &str) -> Option<&Function<'ctx>> {

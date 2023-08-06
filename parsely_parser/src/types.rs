@@ -1,8 +1,9 @@
 use parsely_lexer::tokens::{self, Token};
+use parsely_macros::AsSpan;
 
 use crate::{Parse, ParseError};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct ArrayType {
     pub array_tok: tokens::ArrayTy,
     pub of_tok: tokens::Of,
@@ -19,7 +20,7 @@ impl Parse for ArrayType {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum Type {
     Int(tokens::IntTy),
     Float(tokens::FloatTy),
@@ -44,7 +45,7 @@ impl Parse for Type {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct OfType {
     pub of_tok: tokens::Of,
     pub type_tok: tokens::Type,

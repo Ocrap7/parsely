@@ -8,7 +8,7 @@ use parsely_parser::{
 use crate::{
     llvm_value::{Function, Type, TypeFlags, Value, Variable},
     module::{Module, EMPTY_NAME},
-    Result,
+    Result, raise, ErrorHelper,
 };
 
 impl<'ctx> Module<'ctx> {
@@ -108,7 +108,9 @@ impl<'ctx> Module<'ctx> {
             },
             Statement::Execute(exe) => match &exe.what.noun {
                 Noun::Function(_) => {
-                    let func = self.symbol_table.find_function(&exe.ident.value)?;
+                    let Some(func) = self.symbol_table.find_function(&exe.ident.value) else {
+                        return Err(raise!(@not_found => self, exe.ident.clone())).caught();
+                    };
 
                     self.builder.build_call(func.fn_val, &[], EMPTY_NAME);
                 }

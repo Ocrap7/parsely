@@ -1,6 +1,7 @@
 use std::{cell::Cell, fmt::Display};
 
 use parsely_lexer::tokens::Token;
+use parsely_macros::AsSpan;
 
 pub mod expression;
 pub mod item;
@@ -185,9 +186,10 @@ pub fn parse_from_vec(vec: &Vec<Token>) -> ParseStream<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct Parens<T: Parse> {
     pub parens: parsely_lexer::tokens::Paren,
+    #[skip_item]
     pub value: Box<T>,
 }
 
@@ -217,9 +219,10 @@ impl<T: Parse> Parse for Parens<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct Braces<T: Parse> {
     pub parens: parsely_lexer::tokens::Brace,
+    #[skip_item]
     pub value: Box<T>,
 }
 
@@ -278,9 +281,10 @@ impl<T: Parse> Parse for Braces<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct Brackets<T> {
     pub parens: parsely_lexer::tokens::Bracket,
+    #[skip_item]
     pub value: Box<T>,
 }
 
@@ -343,6 +347,21 @@ impl<T> Brackets<T> {
 pub struct Punctuation<T: Parse, P: Parse> {
     items: Vec<(T, P)>,
     last: Option<Box<T>>,
+}
+
+impl<T, P> parsely_lexer::AsSpan for Punctuation<T, P>
+where
+    T: Parse + parsely_lexer::AsSpan,
+    P: Parse + parsely_lexer::AsSpan,
+{
+    fn as_span(&self) -> parsely_lexer::Span {
+        match &self.last {
+            Some(l) if self.items.len() == 0 => l.as_span(),
+            Some(l) => self.items.as_span().join(l.as_span()),
+            None if self.items.len() == 0 => Default::default(),
+            _ => self.items.as_span(),
+        }
+    }
 }
 
 impl<T, P> Punctuation<T, P>
@@ -449,6 +468,25 @@ pub struct PunctuationLast<T: Parse, P: Parse, L: Parse> {
     last_punct: Option<L>,
     last: Option<Box<T>>,
 }
+
+impl<T, P, L> parsely_lexer::AsSpan for PunctuationLast<T, P, L>
+where
+    T: Parse + parsely_lexer::AsSpan,
+    L: Parse + parsely_lexer::AsSpan,
+    P: Parse + parsely_lexer::AsSpan,
+{
+    fn as_span(&self) -> parsely_lexer::Span {
+        match (&self.last_punct, &self.last) {
+            (_, Some(l)) if self.items.len() == 0 => l.as_span(),
+            (_, Some(l)) => self.items.as_span().join(l.as_span()),
+            (Some(l), _) if self.items.len() == 0 => l.as_span(),
+            (Some(l), _) => self.items.as_span().join(l.as_span()),
+            (_, _) if self.items.len() == 0 => Default::default(),
+            (_, _) => self.items.as_span(),
+        }
+    }
+}
+
 
 impl<T, P, L> PunctuationLast<T, P, L>
 where

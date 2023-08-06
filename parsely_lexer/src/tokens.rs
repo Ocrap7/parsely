@@ -1,5 +1,8 @@
 use std::fmt::Display;
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Range(pub std::ops::Range<usize>);
+
 macro_rules! define_tokens {
     ($tok_macro:ident; $vis:vis enum $token_enum:ident { $($struct_name:ident = $st:tt),*, $(,)* }) => {
         $(
@@ -32,6 +35,12 @@ macro_rules! define_tokens {
             impl std::fmt::Display for $struct_name {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
                     write!(f, "{}", stringify!($st))
+                }
+            }
+
+            impl $crate::AsSpan for $struct_name {
+                fn as_span(&self) -> $crate::Span {
+                    self.0
                 }
             }
         )*
@@ -100,6 +109,24 @@ macro_rules! define_tokens {
             }
         }
 
+        impl AsSpan for $token_enum {
+            fn as_span(&self) -> $crate::Span {
+                match self {
+                    $token_enum::Ident(i) => i.as_span(),
+                    $token_enum::Int(i) => i.as_span(),
+                    $token_enum::Float(i) => i.as_span(),
+                    $token_enum::Bool(i) => i.as_span(),
+                    $token_enum::String(i) => i.as_span(),
+                    $token_enum::Char(i) => i.as_span(),
+                    $token_enum::Group(i) => i.as_span(),
+                    $token_enum::Eof => panic!("EOF doesn't have a span"),
+                    $(
+                        $token_enum::$struct_name(tok) => tok.as_span()
+                    ),*
+                }
+            }
+        }
+
         #[macro_export]
         macro_rules! $tok_macro {
             $(
@@ -144,6 +171,12 @@ impl Display for Ident {
     }
 }
 
+impl AsSpan for Ident {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Int {
     pub value: u64,
@@ -177,6 +210,12 @@ impl Display for Int {
     }
 }
 
+impl AsSpan for Int {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Float {
     pub value: f64,
@@ -207,6 +246,12 @@ impl Float {
 impl Display for Float {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
+    }
+}
+
+impl AsSpan for Float {
+    fn as_span(&self) -> crate::Span {
+        self.span
     }
 }
 
@@ -252,6 +297,12 @@ impl Display for Bool {
     }
 }
 
+impl AsSpan for Bool {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct String {
     pub value: std::string::String,
@@ -281,6 +332,12 @@ impl Display for String {
     }
 }
 
+impl AsSpan for String {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Char {
     pub value: char,
@@ -307,6 +364,12 @@ impl Char {
 impl Display for Char {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "'{}'", self.value)
+    }
+}
+
+impl AsSpan for Char {
+    fn as_span(&self) -> crate::Span {
+        self.span
     }
 }
 
@@ -357,6 +420,8 @@ define_tokens! {
 
 pub use Tok;
 
+use crate::AsSpan;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Group {
     pub open: crate::Span,
@@ -385,6 +450,12 @@ impl Group {
     }
 }
 
+impl AsSpan for Group {
+    fn as_span(&self) -> crate::Span {
+        self.open.join(self.close)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupBracket {
     Paren,
@@ -407,12 +478,30 @@ pub struct Paren {
     pub span: crate::Span,
 }
 
+impl AsSpan for Paren {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Brace {
     pub span: crate::Span,
 }
 
+impl AsSpan for Brace {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Bracket {
     pub span: crate::Span,
+}
+
+impl AsSpan for Bracket {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
 }

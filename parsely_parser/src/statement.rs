@@ -1,4 +1,5 @@
 use parsely_lexer::tokens;
+use parsely_macros::AsSpan;
 
 use crate::{
     expression::Expression,
@@ -6,7 +7,7 @@ use crate::{
     Parse, ParseError, Punctuation,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum Statement {
     Definition(DefinitionAction),
     Execute(Execute),
@@ -25,7 +26,7 @@ impl Parse for Statement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct Execute {
     pub exe_tok: tokens::Executes,
     pub what: Definite,
@@ -44,7 +45,7 @@ impl Parse for Execute {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct BlockList {
     pub statements: Punctuation<Statement, tokens::Then>,
 }
@@ -57,7 +58,7 @@ impl Parse for BlockList {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct MutableInit {
     pub starts_tok: tokens::Starts,
     pub with_tok: tokens::With,
@@ -74,7 +75,7 @@ impl Parse for MutableInit {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct ConstantInit {
     pub contains_tok: tokens::Contains,
     pub value: Expression,
@@ -89,7 +90,7 @@ impl Parse for ConstantInit {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum VariableInit {
     Mutable(MutableInit),
     Const(ConstantInit),
@@ -108,7 +109,7 @@ impl Parse for VariableInit {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum Init {
     Variable(VariableInit),
     Function(BlockList),
@@ -141,7 +142,7 @@ impl Parse for Init {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct DefinitionAction {
     pub def_tok: tokens::Defines,
     pub what: Indefinite,

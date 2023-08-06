@@ -1,8 +1,9 @@
 use parsely_lexer::tokens::{self, Token};
+use parsely_macros::AsSpan;
 
 use crate::{Parse, ParseError, PunctuationLast};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum Literal {
     Int(tokens::Int),
     Float(tokens::Float),
@@ -25,7 +26,7 @@ impl Parse for Literal {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct Value {
     pub the_tok: tokens::The,
     pub value_tok: tokens::Value,
@@ -42,7 +43,7 @@ impl Parse for Value {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct ResultOf {
     pub the_tok: tokens::The,
     pub result: tokens::Result,
@@ -61,7 +62,7 @@ impl Parse for ResultOf {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct ValueOf {
     pub the_tok: tokens::The,
     pub value_tok: tokens::Value,
@@ -80,7 +81,7 @@ impl Parse for ValueOf {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum Expression {
     Value(Value),
     ValueOf(ValueOf),
@@ -103,7 +104,7 @@ impl Parse for Expression {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum BinOperator {
     Add(tokens::Adding),
     Sub(tokens::Subtracting),
@@ -126,7 +127,7 @@ impl Parse for BinOperator {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum UnaryOperator {
     Neg(tokens::Negating),
 }
@@ -143,7 +144,7 @@ impl Parse for UnaryOperator {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct BinOp {
     pub op: BinOperator,
     pub left: Box<Expression>,
@@ -162,7 +163,7 @@ impl Parse for BinOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct UnaryOp {
     pub op: UnaryOperator,
     pub expr: Box<Expression>,
@@ -177,7 +178,7 @@ impl Parse for UnaryOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct OpBy {
     pub op: BinOperator,
     pub by: tokens::By,
@@ -194,7 +195,7 @@ impl Parse for OpBy {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct UnaryImpl {
     pub op: UnaryOperator,
 }
@@ -207,7 +208,7 @@ impl Parse for UnaryImpl {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum Operation {
     BinOp(BinOp),
     UnaryOp(UnaryOp),
@@ -215,7 +216,7 @@ pub enum Operation {
     UnaryImpl(UnaryImpl),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum BinOrUnary {
     BinOp(BinOp),
     UnaryOp(UnaryOp),
@@ -244,7 +245,7 @@ impl Parse for BinOrUnary {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub enum ByOrImpl {
     OpBy(OpBy),
     UnaryImpl(UnaryImpl),
@@ -269,7 +270,7 @@ impl Parse for ByOrImpl {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, AsSpan)]
 pub struct OpList {
     pub first: Option<BinOrUnary>,
     pub comma: Option<tokens::Tok![,]>,

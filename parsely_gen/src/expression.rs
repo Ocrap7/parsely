@@ -1,16 +1,18 @@
 use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
+use parsely_lexer::{AsSpan, Span};
 use parsely_parser::expression::{
     BinOperator, BinOrUnary, ByOrImpl, Expression, Literal, UnaryOperator,
 };
 
 use crate::{
+    attempt,
     llvm_value::{AsValue, TypeBuilder, Value},
     module::{Module, EMPTY_NAME},
-    Result,
+    raise, ErrorHelper, Result,
 };
 
 pub enum ValOrExpr<'ctx, 'a> {
-    Val(Result<Value<'ctx>>),
+    Val(Result<Value<'ctx>>, Span),
     Expr(&'a Expression),
 }
 
@@ -20,8 +22,17 @@ impl<'ctx, 'a> ValOrExpr<'ctx, 'a> {
         mut f: impl FnMut(&Expression) -> Result<Value<'ctx>>,
     ) -> Result<Value<'ctx>> {
         match self {
-            ValOrExpr::Val(val) => val,
+            ValOrExpr::Val(val, _) => val,
             ValOrExpr::Expr(e) => f(e),
+        }
+    }
+}
+
+impl<'ctx, 'a> AsSpan for ValOrExpr<'ctx, 'a> {
+    fn as_span(&self) -> Span {
+        match self {
+            ValOrExpr::Val(_, span) => *span,
+            ValOrExpr::Expr(expr) => expr.as_span(),
         }
     }
 }
@@ -54,16 +65,16 @@ impl<'ctx, 'a> From<&'a BinOrUnary> for Op<'ctx, 'a> {
     }
 }
 
-impl<'ctx, 'a> From<(Result<Value<'ctx>>, &'a ByOrImpl)> for Op<'ctx, 'a> {
-    fn from(value: (Result<Value<'ctx>>, &'a ByOrImpl)) -> Self {
-        match &value.1 {
+impl<'ctx, 'a> From<(Result<Value<'ctx>>, Span, &'a ByOrImpl)> for Op<'ctx, 'a> {
+    fn from(value: (Result<Value<'ctx>>, Span, &'a ByOrImpl)) -> Self {
+        match &value.2 {
             ByOrImpl::OpBy(b) => Op::Bin {
-                left: ValOrExpr::Val(value.0),
+                left: ValOrExpr::Val(value.0, value.1),
                 right: &b.expr,
                 op: b.op.clone(),
             },
             ByOrImpl::UnaryImpl(u) => Op::Uni {
-                expr: ValOrExpr::Val(value.0),
+                expr: ValOrExpr::Val(value.0, value.1),
                 op: u.op.clone(),
             },
         }
@@ -75,7 +86,9 @@ impl<'ctx> Module<'ctx> {
         match expr {
             Expression::Value(lit) => self.gen_literal(&lit.lit),
             Expression::ValueOf(v) => {
-                let var = self.symbol_table.find_variable(&v.ident.value)?;
+                let Some(var) = self.symbol_table.find_variable(&v.ident.value) else {
+                    return Err(raise!(@not_found => self, v.ident.clone())).caught();
+                };
 
                 let value = self.builder.build_load::<BasicTypeEnum>(
                     var.ty.llvm.try_into().expect("Unable to get as basic type"),
@@ -89,23 +102,33 @@ impl<'ctx> Module<'ctx> {
                 })
             }
             Expression::Result(res) => {
-                let first = res.op.first.as_ref().expect("Void expression");
+                let Some(first) = res.op.first.as_ref() else {
+                    raise!(@log Error => self, "Found empty expression", res.the_tok.as_span().join(res.of.as_span()));
+                    return Err(crate::Diagnostic::Caught(res.op.as_span()));
+                };
                 let mut acc = self.gen_bin_or_uni(first.into());
+                let mut span = first.as_span();
 
                 for expr in res.op.rest.iter() {
-                    acc = self.gen_bin_or_uni((acc, expr).into());
+                    acc = attempt!(self, self.gen_bin_or_uni((acc, span, expr).into()));
+                    span = span.join(expr.as_span());
                 }
 
-                acc
+                acc.caught_span(span)
             }
         }
     }
 
     fn gen_bin_or_uni(&mut self, op: Op<'ctx, '_>) -> Result<Value<'ctx>> {
         match op {
-            Op::Bin { left, right, op } => {
-                let left = left.val_or(|left| self.gen_expression(left));
-                let right = self.gen_expression(right);
+            Op::Bin {
+                left: left_raw,
+                right: right_raw,
+                op,
+            } => {
+                let left_span = left_raw.as_span();
+                let left = left_raw.val_or(|left| self.gen_expression(left));
+                let right = self.gen_expression(right_raw);
 
                 let (left, right) = match (left, right) {
                     (Ok(left), Ok(right)) => (left, right),
@@ -129,14 +152,12 @@ impl<'ctx> Module<'ctx> {
                     }
 
                     // Incompatible types for operator
-                    _ => Err(crate::GenError::IncompatibleTypes(
-                        left.ty.to_string(),
-                        right.ty.to_string(),
-                    )),
+                    _ => Err(raise!(@mismatch => self, left_span, right_raw.as_span())).caught(),
                 }
             }
-            Op::Uni { expr, op } => {
-                let expr = expr.val_or(|expr| self.gen_expression(expr))?;
+            Op::Uni { expr: expr_raw, op } => {
+                let expr_span = expr_raw.as_span();
+                let expr = expr_raw.val_or(|expr| self.gen_expression(expr))?;
 
                 match op {
                     UnaryOperator::Neg(_) => match &expr.ty.llvm {
@@ -146,7 +167,7 @@ impl<'ctx> Module<'ctx> {
                                 .build_int_neg(expr.llvm.into_int_value(), EMPTY_NAME);
                             Ok(result.as_value(expr.ty.clone()))
                         }
-                        _ => Err(crate::GenError::IncompatibleType(expr.ty.to_string())),
+                        _ => Err(raise!(@mismatch => self, expr_span)).caught(),
                     },
                 }
             }

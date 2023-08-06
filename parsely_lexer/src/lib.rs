@@ -47,21 +47,19 @@ pub struct Span {
     pub end: Position,
 }
 
-
-
 impl Default for Span {
     fn default() -> Self {
         Span::EMPTY
     }
 }
 
-impl <T: AsSpan> AsSpan for &T {
+impl<T: AsSpan> AsSpan for &T {
     fn as_span(&self) -> Span {
         AsSpan::as_span(*self)
     }
 }
 
-impl <T: AsSpan> AsSpan for Box<T> {
+impl<T: AsSpan> AsSpan for Box<T> {
     fn as_span(&self) -> Span {
         self.as_ref().as_span()
     }
@@ -98,7 +96,7 @@ impl AsSpan for (Position, Position) {
     }
 }
 
-impl <T: AsSpan> AsSpan for Vec<T> {
+impl<T: AsSpan> AsSpan for Vec<T> {
     fn as_span(&self) -> Span {
         let first = self.first().unwrap();
         let last = self.last().unwrap();
@@ -112,7 +110,7 @@ impl <T: AsSpan> AsSpan for Vec<T> {
 //     }
 // }
 
-impl <L: AsSpan, R: AsSpan> AsSpan for (L, R) {
+impl<L: AsSpan, R: AsSpan> AsSpan for (L, R) {
     fn as_span(&self) -> Span {
         Span {
             start: self.0.as_span().start,

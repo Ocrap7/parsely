@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Range, path::Path};
+use std::{collections::HashMap, path::Path};
 
 use parsely_lexer::{
     tokens::{self, Token},
@@ -307,7 +307,8 @@ impl<'a> TokenCache<'a> {
                 .iter()
                 .take(line_token_index)
                 .rev()
-                .position(|tok| tok.as_span().start.line != line).unwrap_or(0);
+                .position(|tok| tok.as_span().start.line != line)
+                .unwrap_or(0);
             let start_index = line_token_index - start_index;
 
             let tokens = &self.program.tokens[start_index..];

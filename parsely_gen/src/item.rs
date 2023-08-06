@@ -8,7 +8,7 @@ use parsely_parser::{
 use crate::{
     llvm_value::{Function, Type, TypeFlags, Value, Variable},
     module::{Module, EMPTY_NAME},
-    Result, raise, ErrorHelper,
+    raise, ErrorHelper, Result,
 };
 
 impl<'ctx> Module<'ctx> {

@@ -3,10 +3,7 @@ use std::fmt::Display;
 use colored::Colorize;
 use module::Module;
 use parsely_lexer::{tokens, AsSpan, Span};
-use parsely_parser::{
-    item::{Program, TokenCache},
-    types::OfType,
-};
+use parsely_parser::item::{Program, TokenCache};
 
 pub mod module;
 
@@ -15,6 +12,7 @@ mod item;
 mod llvm_value;
 mod symbols;
 
+/// Severity of diagnostic
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DiagnosticLevel {
     Internal,
@@ -23,12 +21,18 @@ pub enum DiagnosticLevel {
     Error,
 }
 
+/// A diagnostic produced by code generation
 #[derive(Debug, Clone)]
 pub enum Diagnostic {
+    /// The provided symbol was not found in the symbol table
     SymbolNotFound(tokens::Ident),
+    /// The type doesn't match the context
     IncompatibleType(Span),
+    /// The two types don't match
     IncompatibleTypes(Span, Span),
+    /// A generic message
     Message(String, Span, DiagnosticLevel),
+    /// Special meaning that error was logged already
     Caught(Span),
 }
 
@@ -53,17 +57,18 @@ impl Diagnostic {
         }
     }
 
+    /// Format a diagnostic into 'f'
+    /// `module` and `program` should be for the same file
+    /// `cache` is token and line information cache
     pub fn format(
         &self,
-        module: &Module<'_>,
+        _module: &Module<'_>,
         program: &Program,
         cache: &mut TokenCache,
         f: &mut std::fmt::Formatter<'_>,
     ) -> std::fmt::Result {
         // How many characters on each side of the diagnostic's span should be displayed
         const LINE_PEEK: usize = 3;
-
-        let cwd = std::env::current_dir().unwrap();
 
         match self.level() {
             DiagnosticLevel::Internal => return Ok(()),
@@ -85,11 +90,15 @@ impl Diagnostic {
                 ident.as_span().end.line.to_string().len()
             }
             Diagnostic::IncompatibleType(ty) => {
-                write!(f, "{}", format!("Unexpected type").bold())?;
+                write!(f, "{}", "Unexpected type".to_string().bold())?;
                 ty.end.line.to_string().len()
             }
             Diagnostic::IncompatibleTypes(left, right) => {
-                write!(f, "{}", format!("Types don't match in expression").bold())?;
+                write!(
+                    f,
+                    "{}",
+                    "Types don't match in expression".to_string().bold()
+                )?;
                 left.end.line.max(right.end.line).to_string().len()
             }
             Diagnostic::Message(msg, span, _) => {
@@ -124,6 +133,7 @@ impl Diagnostic {
             )
         };
 
+        // Print one line of source code
         let write_line = |f: &mut std::fmt::Formatter<'_>,
                           highlight: &Span,
                           peeked: &Span,
@@ -140,11 +150,7 @@ impl Diagnostic {
             }
 
             if highlight.start.line == highlight.end.line {
-                write!(
-                    f,
-                    "{}",
-                    &line[highlight.start.column..highlight.end.column]
-                )?;
+                write!(f, "{}", &line[highlight.start.column..highlight.end.column])?;
             } else if line_offset == 0 {
                 write!(f, "{}", &line[highlight.start.column..])?;
             } else if line_offset > 0 {
@@ -181,7 +187,8 @@ impl Diagnostic {
                 DiagnosticLevel::Warning => carets.yellow(),
                 DiagnosticLevel::Error => carets.red(),
                 _ => carets.white(),
-            }.bold();
+            }
+            .bold();
 
             writeln!(
                 f,
@@ -193,6 +200,7 @@ impl Diagnostic {
             )
         };
 
+        // Print source code using `span`
         let mut write_span = |span: &Span| -> std::fmt::Result {
             let token_index = cache.token_index(&span.start);
             let token_range = cache.line_index(span.start.line);
@@ -208,10 +216,9 @@ impl Diagnostic {
             let lines = program
                 .source_lines_slice(&peeked_span)
                 .expect("Unable to slice into source file!");
-            // println!("{:?}", lines);
 
             for (i, line) in lines.lines().enumerate() {
-                write_line(f, &span, &peeked_span, i, line)?;
+                write_line(f, span, &peeked_span, i, line)?;
             }
 
             Ok(())
@@ -225,14 +232,14 @@ impl Diagnostic {
                 write_span(&span)?;
             }
             Diagnostic::IncompatibleType(ty) => {
-                write_span(&ty)?;
+                write_span(ty)?;
             }
             Diagnostic::IncompatibleTypes(left, right) => {
-                write_span(&left)?;
-                write_span(&right)?;
+                write_span(left)?;
+                write_span(right)?;
             }
             Diagnostic::Message(_, span, _) => {
-                write_span(&span)?;
+                write_span(span)?;
             }
             _ => unimplemented!(),
         }
@@ -243,11 +250,25 @@ impl Diagnostic {
     }
 }
 
+impl Display for Diagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Diagnostic as std::fmt::Debug>::fmt(self, f)
+    }
+}
+
+/// Helper struct for easy formatting
+///
+/// # Example
+///
+/// ```
+/// let fmtr = DiagnosticFmt(&module.errors, &module, program);
+/// println!("{}", fmtr);
+/// ```    
 pub struct DiagnosticFmt<'a, 'ctx>(&'a [Diagnostic], &'a Module<'ctx>, &'a Program);
 
 impl Display for DiagnosticFmt<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut cache = TokenCache::new(&self.2);
+        let mut cache = TokenCache::new(self.2);
         for diag in self.0 {
             diag.format(self.1, self.2, &mut cache, f)?;
         }
@@ -255,14 +276,9 @@ impl Display for DiagnosticFmt<'_, '_> {
     }
 }
 
-impl Display for Diagnostic {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Ok(())
-    }
-}
-
 impl std::error::Error for Diagnostic {}
 
+/// Code gen result
 type Result<T> = std::result::Result<T, Diagnostic>;
 
 trait ErrorHelper {
@@ -290,6 +306,8 @@ impl ErrorHelper for Diagnostic {
     }
 }
 
+/// If `$res` is an error it is logged, otherwise the value is returned
+/// If `$or` is provided, it is run instead of logging
 #[macro_export]
 macro_rules! attempt {
     ($self:expr, $res:expr) => {{
@@ -311,6 +329,7 @@ macro_rules! attempt {
     }};
 }
 
+/// Log the specified error
 #[macro_export]
 macro_rules! raise {
     (@not_found => $self:expr, $ident:expr) => {{

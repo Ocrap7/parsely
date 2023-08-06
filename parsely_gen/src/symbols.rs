@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{
-    llvm_value::{Function, Type, Variable},
-    Diagnostic, Result,
-};
+use crate::llvm_value::{Function, Type, Variable};
 
 #[derive(Debug)]
 pub struct SymbolTable<'ctx> {
@@ -43,15 +40,11 @@ impl<'ctx> SymbolTable<'ctx> {
     }
 
     pub fn find_variable(&self, name: &str) -> Option<&Variable<'ctx>> {
-        self.iter_variable()
-            .rev()
-            .find_map(|map| map.get(name))
+        self.iter_variable().rev().find_map(|map| map.get(name))
     }
 
     pub fn find_variable_in_current(&self, name: &str) -> Option<&Variable<'ctx>> {
-        self.scopes
-            .last()
-            .and_then(|scp| scp.variables.get(name))
+        self.scopes.last().and_then(|scp| scp.variables.get(name))
     }
 
     pub fn iter_variable(
@@ -80,15 +73,11 @@ impl<'ctx> SymbolTable<'ctx> {
     }
 
     pub fn find_function(&self, name: &str) -> Option<&Function<'ctx>> {
-        self.iter_functions()
-            .rev()
-            .find_map(|map| map.get(name))
+        self.iter_functions().rev().find_map(|map| map.get(name))
     }
 
     pub fn find_function_in_current(&self, name: &str) -> Option<&Function<'ctx>> {
-        self.scopes
-            .last()
-            .and_then(|scp| scp.functions.get(name))
+        self.scopes.last().and_then(|scp| scp.functions.get(name))
     }
 
     pub fn iter_functions(

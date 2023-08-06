@@ -356,9 +356,9 @@ where
 {
     fn as_span(&self) -> parsely_lexer::Span {
         match &self.last {
-            Some(l) if self.items.len() == 0 => l.as_span(),
+            Some(l) if self.items.is_empty() => l.as_span(),
             Some(l) => self.items.as_span().join(l.as_span()),
-            None if self.items.len() == 0 => Default::default(),
+            None if self.items.is_empty() => Default::default(),
             _ => self.items.as_span(),
         }
     }
@@ -477,16 +477,15 @@ where
 {
     fn as_span(&self) -> parsely_lexer::Span {
         match (&self.last_punct, &self.last) {
-            (_, Some(l)) if self.items.len() == 0 => l.as_span(),
+            (_, Some(l)) if self.items.is_empty() => l.as_span(),
             (_, Some(l)) => self.items.as_span().join(l.as_span()),
-            (Some(l), _) if self.items.len() == 0 => l.as_span(),
+            (Some(l), _) if self.items.is_empty() => l.as_span(),
             (Some(l), _) => self.items.as_span().join(l.as_span()),
-            (_, _) if self.items.len() == 0 => Default::default(),
+            (_, _) if self.items.is_empty() => Default::default(),
             (_, _) => self.items.as_span(),
         }
     }
 }
-
 
 impl<T, P, L> PunctuationLast<T, P, L>
 where

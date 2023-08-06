@@ -1,12 +1,16 @@
-use std::{str::FromStr, collections::HashSet};
+use std::{collections::HashSet, str::FromStr};
 
-use proc_macro::{TokenTree};
+use proc_macro::TokenTree;
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::{Type, Attribute, parse::{ParseStream, Parse, Parser}, punctuated::Punctuated, Fields, GenericParam, parse_macro_input, DeriveInput, Data};
+use syn::{
+    parse::{Parse, ParseStream, Parser},
+    parse_macro_input,
+    punctuated::Punctuated,
+    Attribute, Data, DeriveInput, Fields, GenericParam, Type,
+};
 
-
-fn has_attr<'a>(attrs: &'a Vec<Attribute>, st: &[&str]) -> Option<&'a Attribute> {
+fn has_attr<'a>(attrs: &'a [Attribute], st: &[&str]) -> Option<&'a Attribute> {
     attrs.iter().find(|a| {
         let segs = &a.meta.path().segments;
         if segs.len() != st.len() {
@@ -14,35 +18,13 @@ fn has_attr<'a>(attrs: &'a Vec<Attribute>, st: &[&str]) -> Option<&'a Attribute>
         }
 
         for (a, b) in segs.iter().zip(st.iter()) {
-            if a.ident.to_string() != *b {
+            if a.ident != *b {
                 return false;
             }
         }
 
         true
     })
-}
-
-fn has_many_attr<'a>(
-    attrs: &'a Vec<Attribute>,
-    st: &'a [&str],
-) -> impl Iterator<Item = &'a Attribute> + 'a {
-    attrs.iter().filter(|a| {
-        let segs = &a.meta.path().segments;
-        if segs.len() != st.len() {
-            return false;
-        }
-
-        for (a, b) in segs.iter().zip(st.iter()) {
-            if a.ident.to_string() != *b {
-                return false;
-            }
-        }
-
-        true
-    })
-    // .cloned()
-    // .collect()
 }
 
 #[derive(Debug)]
@@ -96,7 +78,7 @@ fn is_optional(ty: &Type) -> bool {
             if segs.len() != 1 {
                 return false;
             }
-            segs.first().unwrap().ident.to_string() == "Option"
+            segs.first().unwrap().ident == "Option"
         }
         _ => false,
     }
@@ -122,8 +104,6 @@ pub fn str_arr(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let fstr = format!("['{}']", arr);
 
-    
-
     proc_macro::TokenStream::from_str(&fstr).unwrap()
 }
 
@@ -137,8 +117,6 @@ pub fn consume_kw(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let fstr = format!("Some({}::from_span_start(self.make_position()))", ident);
 
-    
-
     proc_macro::TokenStream::from_str(&fstr).unwrap()
 }
 
@@ -151,67 +129,65 @@ fn derive_ast_node_helper(
     let mut output = TokenStream::new();
     match &fields {
         Fields::Unnamed(fields) => {
-            let mut generate = |left: i32,
-                                mut right: i32,
-                                left_name: &TokenStream,
-                                stream: &TokenStream| {
-                while left <= right && right >= 0 {
-                    let right_field = &fields.unnamed[right as usize];
+            let mut generate =
+                |left: i32, mut right: i32, left_name: &TokenStream, stream: &TokenStream| {
+                    while left <= right && right >= 0 {
+                        let right_field = &fields.unnamed[right as usize];
 
-                    if has_attr(&right_field.attrs, &["skip_item"]).is_some()
-                        || ignore_types.contains(&right_field.ty)
-                    {
-                        right -= 1;
-                        continue;
-                    }
-
-                    let right_str = format!("_a{}", right);
-                    let right_name = TokenStream::from_str(&right_str).unwrap();
-
-                    if ignore_items.contains(&right_str) {
-                        right -= 1;
-                        continue;
-                    }
-
-                    let ignore_rights: String = (right as usize..fields.unnamed.len() - 1)
-                        .map(|_| "_")
-                        .collect::<Vec<_>>()
-                        .join(",");
-
-                    let mut out = stream.clone();
-
-                    if left != right {
-                        if is_optional(&fields.unnamed[right as usize].ty) {
-                            out.extend(quote::quote! { Some(#right_name) });
-                        } else {
-                            out.extend(right_name.clone());
+                        if has_attr(&right_field.attrs, &["skip_item"]).is_some()
+                            || ignore_types.contains(&right_field.ty)
+                        {
+                            right -= 1;
+                            continue;
                         }
-                    }
 
-                    if ignore_rights.len() > 0 {
+                        let right_str = format!("_a{}", right);
+                        let right_name = TokenStream::from_str(&right_str).unwrap();
+
+                        if ignore_items.contains(&right_str) {
+                            right -= 1;
+                            continue;
+                        }
+
+                        let ignore_rights: String = (right as usize..fields.unnamed.len() - 1)
+                            .map(|_| "_")
+                            .collect::<Vec<_>>()
+                            .join(",");
+
+                        let mut out = stream.clone();
+
                         if left != right {
-                            out.extend(quote::quote!(,));
+                            if is_optional(&fields.unnamed[right as usize].ty) {
+                                out.extend(quote::quote! { Some(#right_name) });
+                            } else {
+                                out.extend(right_name.clone());
+                            }
                         }
-                        out.extend(TokenStream::from_str(&ignore_rights));
-                    }
 
-                    if let Some(enum_field) = enum_field {
-                        output.extend(quote::quote! {
-                            #ident::#enum_field (#out) => (&#left_name, &#right_name).as_span(),
-                        });
-                    } else {
-                        output.extend(quote::quote! {
-                            #ident (#out) => (&#left_name, &#right_name).as_span(),
-                        });
-                    }
+                        if !ignore_rights.is_empty() {
+                            if left != right {
+                                out.extend(quote::quote!(,));
+                            }
+                            out.extend(TokenStream::from_str(&ignore_rights));
+                        }
 
-                    if is_optional(&fields.unnamed[right as usize].ty) {
-                        right -= 1
-                    } else {
-                        break;
+                        if let Some(enum_field) = enum_field {
+                            output.extend(quote::quote! {
+                                #ident::#enum_field (#out) => (&#left_name, &#right_name).as_span(),
+                            });
+                        } else {
+                            output.extend(quote::quote! {
+                                #ident (#out) => (&#left_name, &#right_name).as_span(),
+                            });
+                        }
+
+                        if is_optional(&fields.unnamed[right as usize].ty) {
+                            right -= 1
+                        } else {
+                            break;
+                        }
                     }
-                }
-            };
+                };
 
             let mut left = 0;
             let right = fields.unnamed.len() as i32 - 1;
@@ -235,13 +211,12 @@ fn derive_ast_node_helper(
                 }
 
                 let mut inner_names = TokenStream::new();
-                let ignore_lefts: String =
-                    (0..left as usize)
-                        .map(|_| "_")
-                        .collect::<Vec<_>>()
-                        .join(",");
+                let ignore_lefts: String = (0..left as usize)
+                    .map(|_| "_")
+                    .collect::<Vec<_>>()
+                    .join(",");
 
-                if ignore_lefts.len() > 0 {
+                if !ignore_lefts.is_empty() {
                     inner_names.extend(TokenStream::from_str(&ignore_lefts));
                     inner_names.extend(quote::quote!(,));
                 }
@@ -309,8 +284,8 @@ fn derive_ast_node_helper(
                                     });
                     } else {
                         output.extend(quote::quote! {
-                                        #ident { #out .. } => (&#left_name, &#right_name).as_span(),
-                                    });
+                            #ident { #out .. } => (&#left_name, &#right_name).as_span(),
+                        });
                     }
 
                     if is_optional(&right_field.ty) {
@@ -368,7 +343,7 @@ pub fn derive_ast_node(tokens: proc_macro::TokenStream) -> proc_macro::TokenStre
     let ident = input.ident;
 
     let ignore = has_attr(&input.attrs, &["skip_all"])
-        .map(|attr| attr_args(attr))
+        .map(attr_args)
         .unwrap_or((HashSet::new(), HashSet::new()));
 
     let params = input.generics.params;

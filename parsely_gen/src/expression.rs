@@ -1,4 +1,3 @@
-use bitflags::Flags;
 use inkwell::{
     types::{AnyTypeEnum, BasicTypeEnum},
     values::{AnyValue, BasicValueEnum},

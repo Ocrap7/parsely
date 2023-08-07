@@ -35,7 +35,7 @@ impl<'ctx> Module<'ctx> {
                     return Err(raise!(@not_found => self, i.clone()).caught());
                 };
 
-                return Ok(ty.clone());
+                Ok(ty.clone())
             }
             types::Type::Array(a) => {
                 let ty = self.gen_type(&a.base_type)?;

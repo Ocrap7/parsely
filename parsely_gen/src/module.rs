@@ -110,7 +110,7 @@ impl<'ctx> Module<'ctx> {
             self.gen_item(item)?;
         }
 
-        self.dirty = self.errors.len() != 0;
+        self.dirty = !self.errors.is_empty();
         Ok(())
     }
 

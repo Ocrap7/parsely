@@ -46,7 +46,7 @@ impl<'ctx> Module<'ctx> {
 
                     let void_ty = self.context.void_type().to_type();
                     let ty =
-                        BasicTypeEnum::try_from(ret_ty.as_ref().unwrap_or_else(|| &void_ty).llvm)
+                        BasicTypeEnum::try_from(ret_ty.as_ref().unwrap_or(&void_ty).llvm)
                             .expect("Unable to get basic type enum")
                             .fn_type(&llvm_args, false);
 
@@ -112,13 +112,14 @@ impl<'ctx> Module<'ctx> {
 
                     for (i, stmt) in def.init.as_fn().statements.iter().enumerate() {
                         let Ok(val) = attempt!(self, self.gen_statement(stmt)) else {
-                            continue;  
+                            continue;
                         };
 
                         // Set return value to the last statement in the function body (if it has a value)
                         if let Some(val) = val {
                             if i == def.init.as_fn().statements.len() - 1 && ret_ty.is_some() {
-                                self.builder.build_store(self.return_alloc.unwrap(), val.llvm);
+                                self.builder
+                                    .build_store(self.return_alloc.unwrap(), val.llvm);
                             }
                         }
                     }

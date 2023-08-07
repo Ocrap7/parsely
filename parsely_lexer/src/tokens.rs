@@ -3,9 +3,172 @@ use std::fmt::Display;
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Range(pub std::ops::Range<usize>);
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Plural;
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct ThirdPerson;
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct PastParticiple;
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Gerund;
+
 macro_rules! define_tokens {
-    ($tok_macro:ident; $vis:vis enum $token_enum:ident { $($struct_name:ident = $st:tt),*, $(,)* }) => {
+    ($tok_macro:ident; $vis:vis enum $token_enum:ident, $keyword_enum:ident => $keyword_mod:ident { $($struct_name:tt = $body:tt),* $(,)?; $($struct_name_n:ident = $body_n:tt),* $(,)? }) => {
         $(
+            define_tokens! { @arm $vis $token_enum $keyword_enum $keyword_mod $struct_name = $body }
+        )*
+        $(
+            define_tokens! { @arm $vis $token_enum [$struct_name_n] = $body_n }
+        )*
+        define_tokens! { @kw_enum $vis $keyword_enum $($struct_name = $body),* }
+        pub const SSSS: &str = stringify!(
+            $(
+              $struct_name_n
+            ),*
+        );
+
+        bitflags::bitflags! {
+            #[derive(Debug, Clone, PartialEq, Eq)]
+            $vis struct $keyword_mod: u64 {
+                const EMPTY = 0;
+                const NOUN = 0x1;
+                const PLURAL = Self::NOUN.bits() | 0x2;
+
+                const VERB = 0x4;
+                const THIRD_PERSON = Self::VERB.bits() | 0x8;
+                const PAST_PARTICIPLE = Self::VERB.bits() | 0x10;
+                const GERUND = Self::VERB.bits() | 0x20;
+            }
+        }
+
+        #[derive(Debug, Clone, PartialEq)]
+        $vis enum $token_enum {
+            Ident(Ident),
+            Int(Int),
+            Float(Float),
+            Bool(Bool),
+            String(String),
+            Char(Char),
+            Group(Group),
+            $keyword_enum($keyword_enum, $keyword_mod),
+            Eof($crate::Span),
+            $($struct_name_n($struct_name_n)),*,
+        }
+
+        impl $token_enum {
+            pub fn len(&self) -> usize {
+                match self {
+                    $token_enum::Ident(i) => i.span.len(),
+                    $token_enum::Int(i) => i.span.len(),
+                    $token_enum::Float(i) => i.span.len(),
+                    $token_enum::Bool(i) => i.span.len(),
+                    $token_enum::String(i) => i.span.len(),
+                    $token_enum::Char(i) => i.span.len(),
+                    $token_enum::Group(_) => 0,
+                    $token_enum::Eof(_) => 0,
+                    $token_enum::$keyword_enum(k, _) => k.len(),
+                    $(
+                      $token_enum::$struct_name_n(_) => $struct_name_n::len()
+                    ),*
+                }
+            }
+
+            pub fn is_empty(&self) -> bool {
+                self.len() == 0
+            }
+
+            pub fn as_str(&self) -> &'static str {
+                match self {
+                    $token_enum::$keyword_enum(k, _) => k.as_str(),
+                    _ => panic!("Unable to get static str on token! (maybe use .to_string() instead)")
+                }
+            }
+        }
+
+        impl std::fmt::Display for $token_enum {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+                match self {
+                    $token_enum::Ident(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::Int(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::Float(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::Bool(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::String(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::Char(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::Group(i) => std::fmt::Display::fmt(i, f),
+                    $(
+                        $token_enum::$struct_name_n(i) => std::fmt::Display::fmt(i, f),
+                    )*
+                    $token_enum::$keyword_enum(k, _) => std::fmt::Display::fmt(k, f),
+                    $token_enum::Eof(_) => write!(f, "eof"),
+                }
+            }
+        }
+
+        impl AsSpan for $token_enum {
+            fn as_span(&self) -> $crate::Span {
+                match self {
+                    $token_enum::Ident(i) => i.as_span(),
+                    $token_enum::Int(i) => i.as_span(),
+                    $token_enum::Float(i) => i.as_span(),
+                    $token_enum::Bool(i) => i.as_span(),
+                    $token_enum::String(i) => i.as_span(),
+                    $token_enum::Char(i) => i.as_span(),
+                    $token_enum::Group(i) => i.as_span(),
+                    $token_enum::$keyword_enum(k, _) => k.as_span(),
+                    $(
+                        $token_enum::$struct_name_n(i) => i.as_span(),
+                    )*
+                    $token_enum::Eof(i) => *i,
+                }
+            }
+        }
+
+        define_tokens! {@impl_match_macro $tok_macro $token_enum $keyword_enum $keyword_mod $($struct_name = $body),*, $([$struct_name_n] = $body_n),*}
+    };
+    (@arm $vis:vis $token_enum:ident [$struct_name:ident] = $st:tt) => {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        $vis struct $struct_name(pub $crate::Span);
+
+        impl $struct_name {
+            pub const EMPTY: $struct_name = $struct_name($crate::Span::EMPTY);
+            pub const NAME: &str = stringify!($st);
+
+            pub fn from_span_start(start: $crate::Position, len: usize) -> $token_enum {
+                $token_enum::$struct_name(
+                    $crate::tokens::$struct_name(
+                        $crate::Span {
+                            end: $crate::Position {
+                                line: start.line,
+                                column: start.column + len,
+                            },
+                            start,
+                        }
+                    )
+                )
+            }
+
+            pub fn len() -> usize {
+                stringify!($st).len()
+            }
+
+            pub fn as_str() -> &'static str {
+                stringify!($st)
+            }
+        }
+
+        impl std::fmt::Display for $struct_name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+                write!(f, "{}", stringify!($st))
+            }
+        }
+
+        impl $crate::AsSpan for $struct_name {
+            fn as_span(&self) -> $crate::Span {
+                self.0
+            }
+        }
+    };
+    (@arm $vis:vis $token_enum:ident $keyword_enum:ident $keyword_mod:ident [$struct_name:ident] = $st:tt) => {
             #[derive(Debug, Clone, PartialEq, Eq)]
             $vis struct $struct_name(pub $crate::Span);
 
@@ -13,14 +176,19 @@ macro_rules! define_tokens {
                 pub const EMPTY: $struct_name = $struct_name($crate::Span::EMPTY);
                 pub const NAME: &str = stringify!($st);
 
-                pub fn from_span_start(start: $crate::Position) -> $token_enum {
-                    $token_enum::$struct_name($struct_name($crate::Span {
-                        end: $crate::Position {
-                            line: start.line,
-                            column: start.column + $struct_name::len(),
-                        },
-                        start,
-                    }))
+                pub fn from_span_start(start: $crate::Position, len: usize, mods: $keyword_mod) -> $token_enum {
+                    $token_enum::$keyword_enum(
+                        $keyword_enum::$struct_name(
+                            $crate::tokens::$struct_name($crate::Span {
+                                end: $crate::Position {
+                                    line: start.line,
+                                    column: start.column + len,
+                                },
+                                start,
+                            })
+                        ),
+                        mods
+                    )
                 }
 
                 pub fn len() -> usize {
@@ -43,36 +211,138 @@ macro_rules! define_tokens {
                     self.0
                 }
             }
-        )*
+    };
+    (@arm $vis:vis $token_enum:ident $keyword_enum:ident $keyword_mod:ident [$struct_name:ident :noun] = $st:tt) => {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        $vis struct $struct_name<Plural = ()>(pub $crate::Span, pub std::marker::PhantomData<Plural>);
 
+        impl $struct_name<()> {
+            pub const EMPTY: $struct_name = $struct_name::<()>($crate::Span::EMPTY, std::marker::PhantomData);
+            pub const NAME: &str = stringify!($st);
+
+            pub fn from_span_start(start: $crate::Position, len: usize, mods: $keyword_mod) -> $token_enum {
+                $token_enum::$keyword_enum(
+                    $keyword_enum::$struct_name(
+                        $crate::tokens::$struct_name(
+                            $crate::Span {
+                                end: $crate::Position {
+                                    line: start.line,
+                                    column: start.column + len,
+                                },
+                                start,
+                            },
+                            std::marker::PhantomData
+                        )
+                    ),
+                    mods
+                )
+            }
+
+            pub fn len() -> usize {
+                stringify!($st).len()
+            }
+
+            pub fn as_str() -> &'static str {
+                stringify!($st)
+            }
+        }
+
+        impl <P> std::fmt::Display for $struct_name<P> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+                write!(f, "{}", stringify!($st))
+            }
+        }
+
+        impl <P> $crate::AsSpan for $struct_name<P> {
+            fn as_span(&self) -> $crate::Span {
+                self.0
+            }
+        }
+
+        impl From<$struct_name<()>> for $struct_name<$crate::tokens::Plural> {
+            fn from(value: $struct_name<()>) -> Self {
+                Self(value.0, std::marker::PhantomData)
+            }
+        }
+    };
+    (@arm $vis:vis $token_enum:ident $keyword_enum:ident $keyword_mod:ident [$struct_name:ident :verb] = $st:tt) => {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        $vis struct $struct_name<Form = ()>(pub $crate::Span, pub std::marker::PhantomData<Form>);
+
+        impl $struct_name<()> {
+            pub const EMPTY: $struct_name = $struct_name::<()>($crate::Span::EMPTY, std::marker::PhantomData);
+            pub const NAME: &str = stringify!($st);
+
+            pub fn from_span_start(start: $crate::Position, len: usize, mods: $keyword_mod) -> $token_enum {
+                $token_enum::$keyword_enum(
+                    $keyword_enum::$struct_name(
+                        $crate::tokens::$struct_name(
+                            $crate::Span {
+                                end: $crate::Position {
+                                    line: start.line,
+                                    column: start.column + len,
+                                },
+                                start,
+                            },
+                            std::marker::PhantomData
+                        )
+                    ),
+                    mods
+                )
+            }
+
+            pub fn len() -> usize {
+                stringify!($st).len()
+            }
+
+            pub fn as_str() -> &'static str {
+                stringify!($st)
+            }
+        }
+
+        impl <P> std::fmt::Display for $struct_name<P> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+                write!(f, "{}", stringify!($st))
+            }
+        }
+
+        impl <P> $crate::AsSpan for $struct_name<P> {
+            fn as_span(&self) -> $crate::Span {
+                self.0
+            }
+        }
+
+        impl From<$struct_name<()>> for $struct_name<$crate::tokens::ThirdPerson> {
+            fn from(value: $struct_name<()>) -> Self {
+                Self(value.0, std::marker::PhantomData)
+            }
+        }
+
+        impl From<$struct_name<()>> for $struct_name<$crate::tokens::PastParticiple> {
+            fn from(value: $struct_name<()>) -> Self {
+                Self(value.0, std::marker::PhantomData)
+            }
+        }
+
+        impl From<$struct_name<()>> for $struct_name<$crate::tokens::Gerund> {
+            fn from(value: $struct_name<()>) -> Self {
+                Self(value.0, std::marker::PhantomData)
+            }
+        }
+    };
+    (@kw_enum $vis:vis $keyword_enum:ident $([$struct_name:ident $(:noun)? $(:verb)?] = $st:tt),* $(,)* ) => {
         #[derive(Debug, Clone, PartialEq)]
-        $vis enum $token_enum {
-            Ident(Ident),
-            Int(Int),
-            Float(Float),
-            Bool(Bool),
-            String(String),
-            Char(Char),
-            Group(Group),
-            Eof($crate::Span),
+        $vis enum $keyword_enum {
            $(
                 $struct_name($struct_name)
            ),*
         }
 
-        impl $token_enum {
+        impl $keyword_enum {
             pub fn len(&self) -> usize {
                 match self {
-                    $token_enum::Ident(i) => i.span.len(),
-                    $token_enum::Int(i) => i.span.len(),
-                    $token_enum::Float(i) => i.span.len(),
-                    $token_enum::Bool(i) => i.span.len(),
-                    $token_enum::String(i) => i.span.len(),
-                    $token_enum::Char(i) => i.span.len(),
-                    $token_enum::Group(_) => 0,
-                    $token_enum::Eof(_) => 0,
                     $(
-                        $token_enum::$struct_name(_) => $struct_name::len()
+                        $keyword_enum::$struct_name(_) => $struct_name::len()
                     ),*
                 }
             }
@@ -84,59 +354,107 @@ macro_rules! define_tokens {
             pub fn as_str(&self) -> &'static str {
                 match self {
                     $(
-                        $token_enum::$struct_name(_) => $struct_name::as_str()
+                        $keyword_enum::$struct_name(_) => $struct_name::as_str()
                     ),*,
-                    _ => panic!("Unable to get static str on token! (maybe use .to_string() instead)")
                 }
             }
         }
 
-        impl std::fmt::Display for $token_enum {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        impl Display for $keyword_enum {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 match self {
-                    $token_enum::Ident(i) => std::fmt::Display::fmt(i, f),
-                    $token_enum::Int(i) => std::fmt::Display::fmt(i, f),
-                    $token_enum::Float(i) => std::fmt::Display::fmt(i, f),
-                    $token_enum::Bool(i) => std::fmt::Display::fmt(i, f),
-                    $token_enum::String(i) => std::fmt::Display::fmt(i, f),
-                    $token_enum::Char(i) => std::fmt::Display::fmt(i, f),
-                    $token_enum::Group(i) => std::fmt::Display::fmt(i, f),
-                    $token_enum::Eof(_) => write!(f, "eof"),
                     $(
-                        $token_enum::$struct_name(tok) => std::fmt::Display::fmt(tok, f)
+                        $keyword_enum::$struct_name(tok) => std::fmt::Display::fmt(tok, f)
                     ),*
                 }
             }
         }
 
-        impl AsSpan for $token_enum {
+        impl AsSpan for $keyword_enum {
             fn as_span(&self) -> $crate::Span {
                 match self {
-                    $token_enum::Ident(i) => i.as_span(),
-                    $token_enum::Int(i) => i.as_span(),
-                    $token_enum::Float(i) => i.as_span(),
-                    $token_enum::Bool(i) => i.as_span(),
-                    $token_enum::String(i) => i.as_span(),
-                    $token_enum::Char(i) => i.as_span(),
-                    $token_enum::Group(i) => i.as_span(),
-                    $token_enum::Eof(i) => *i,
                     $(
-                        $token_enum::$struct_name(tok) => tok.as_span()
+                        $keyword_enum::$struct_name(tok) => tok.as_span()
                     ),*
                 }
             }
         }
-
+    };
+    (@impl_match_macro $tok_macro:ident $token_enum:ident $keyword_enum:ident $keyword_mod:ident $([$struct_name:ident $(:noun)? $(:verb)? ] = $st:tt),* $(,)*) => {
         #[macro_export]
         macro_rules! $tok_macro {
             $(
                 [$st] => {$crate::tokens::$struct_name};
             )*
             $(
-                [enum $st] => {$crate::tokens::$token_enum::$struct_name($crate::tokens::$struct_name(_))};
+                [$st:plural] => {$crate::tokens::$struct_name::<$crate::tokens::Plural>};
             )*
             $(
-                [enum $st as $name:ident] => {$crate::tokens::$token_enum::$struct_name($name @ $crate::tokens::$struct_name(_))};
+                [$st:third_person] => {$crate::tokens::$struct_name::<$crate::tokens::ThirdPerson>};
+            )*
+            $(
+                [$st:past_participle] => {$crate::tokens::$struct_name::<$crate::tokens::PastParticiple>};
+            )*
+            $(
+                [$st:gerund] => {$crate::tokens::$struct_name::<$crate::tokens::Gerund>};
+            )*
+
+            $(
+                [enum $st] => {$crate::tokens::$token_enum::$struct_name($crate::tokens::$struct_name(..))};
+            )*
+
+            $(
+                [enum $st:other] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($crate::tokens::$struct_name(..)), _)};
+            )*
+
+            // Nouns
+            $(
+                [enum $st:noun] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::NOUN)};
+            )*
+            $(
+                [enum $st:plural] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::PLURAL)};
+            )*
+
+            // Verbs
+            $(
+                [enum $st:verb] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::VERB)};
+            )*
+            $(
+                [enum $st:third_person] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::THIRD_PERSON)};
+            )*
+            $(
+                [enum $st:past_participle] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::PAST_PARTICIPLE)};
+            )*
+            $(
+                (enum $st:gerund) => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::GERUND)};
+            )*
+
+            // /** Bindings **/
+
+            $(
+                [enum $name:ident @ $st] => {$crate::tokens::$token_enum::$struct_name($name @ $crate::tokens::$struct_name(..))};
+            )*
+
+            // Nouns
+            $(
+                [enum $name:ident @ $st:noun] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($name @ $crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::NOUN)};
+            )*
+            $(
+                [enum $name:ident @ $st:plural] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($name @ $crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::PLURAL)};
+            )*
+
+            // Verbs
+            $(
+                [enum $name:ident @ $st:verb] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($name @ $crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::VERB)};
+            )*
+            $(
+                [enum $name:ident @ $st:third_person] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($name @ $crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::THIRD_PERSON)};
+            )*
+            $(
+                [enum $name:ident @ $st:past_participle] => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($name @ $crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::PAST_PARTICIPLE)};
+            )*
+            $(
+                (enum $name:ident @ $st:gerund) => {$crate::tokens::$token_enum::$keyword_enum($crate::tokens::$keyword_enum::$struct_name($name @ $crate::tokens::$struct_name(..)), $crate::tokens::$keyword_mod::GERUND)};
             )*
         }
     };
@@ -375,45 +693,44 @@ impl AsSpan for Char {
 
 define_tokens! {
     Tok;
-    pub enum Token {
+    pub enum Token, Keyword => KeywordMod {
         // Keyword
-        A = a,
-        And = and,
-        Arguments = arguments,
-        ArrayTy = array,
-        BoolTy = boolean,
-        By = by,
-        Called = called,
-        Constant = constant,
-        Contains = contains,
-        Define = define,
-        Defines = defines,
-        Evaluates = evaluates,
-        Executes = executes,
-        Executing = executing,
-        Function = function,
-        FloatTy = float,
-        Inputs = inputs,
-        IntTy = integer,
-        Of = of,
-        Output = output,
-        Result = result,
-        Starts = starts,
-        That = that,
-        Then = then,
-        The = the,
-        Type = type,
-        Value = value,
-        Variable = variable,
-        With = with,
+        [A] = a,
+        [And] = and,
+        [Argument:noun] = argument,
+        [ArrayTy] = array,
+        [BoolTy] = boolean,
+        [By] = by,
+        [Call:verb] = call,
+        [Constant:noun] = constant,
+        [Contain:verb] = contain,
+        [Define:verb] = define,
+        [Evaluate:verb] = evaluate,
+        [Execute:verb] = execute,
+        [Function:noun] = function,
+        [FloatTy] = float,
+        [Input:noun] = input,
+        [IntTy] = integer,
+        [Of] = of,
+        [Output:noun] = output,
+        [Result:noun] = result,
+        [Start:verb] = start,
+        [That] = that,
+        [Then] = then,
+        [The] = the,
+        [Type:noun] = type,
+        [Value:noun] = value,
+        [Variable:noun] = variable,
+        [With] = with,
 
         // Operator
-        Adding = adding,
-        Subtracting = subtracting,
-        Multiplying = multiplying,
-        Dividing = dividing,
+        [Add:verb] = add,
+        [Subtract:verb] = subtract,
+        [Multiply:verb] = multiply,
+        [Divide:verb] = divide,
 
-        Negating = negating,
+        [Negate:verb] = negate
+        ;
 
         // Punctuation
         Semi = ;,

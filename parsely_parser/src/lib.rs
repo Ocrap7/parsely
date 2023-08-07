@@ -123,10 +123,10 @@ impl ParseStream<'_> {
     }
 
     /// Get the next token and return a direct token type
-    pub fn next_ref<T: Clone>(&self, token: &T) -> T {
+    pub fn next_ref<T: Clone, U: From<T>>(&self, token: &T) -> U {
         let value = self.index.take();
         self.index.set(value + 1);
-        token.clone()
+        token.clone().into()
     }
 }
 

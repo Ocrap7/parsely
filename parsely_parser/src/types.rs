@@ -32,10 +32,10 @@ pub enum Type {
 impl Parse for Type {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            Token::IntTy(i) => Ok(Type::Int(stream.next_ref(i))),
-            Token::FloatTy(i) => Ok(Type::Float(stream.next_ref(i))),
-            Token::BoolTy(i) => Ok(Type::Bool(stream.next_ref(i))),
-            Token::ArrayTy(_) => stream.parse().map(Type::Array),
+            tokens::Tok![enum i @ integer:noun] => Ok(Type::Int(stream.next_ref(i))),
+            tokens::Tok![enum i @ float:noun] => Ok(Type::Float(stream.next_ref(i))),
+            tokens::Tok![enum i @ boolean:noun] => Ok(Type::Bool(stream.next_ref(i))),
+            tokens::Tok![enum array:noun] => stream.parse().map(Type::Array),
             Token::Ident(i) => Ok(Type::Named(stream.next_ref(i))),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),

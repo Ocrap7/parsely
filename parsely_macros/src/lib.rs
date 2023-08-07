@@ -2,7 +2,7 @@ use std::{collections::HashSet, str::FromStr};
 
 use proc_macro::TokenTree;
 use proc_macro2::TokenStream;
-use quote::ToTokens;
+use quote::{quote, ToTokens};
 use syn::{
     parse::{Parse, ParseStream, Parser},
     parse_macro_input,
@@ -107,6 +107,35 @@ pub fn str_arr(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     proc_macro::TokenStream::from_str(&fstr).unwrap()
 }
 
+fn ident_to_array<I: ToString>(ident: I, append: Option<&str>) -> String {
+    let mut lit_string = ident.to_string();
+    if let Some(append) = append {
+        lit_string.push_str(append);
+    }
+
+    let arr = lit_string
+        .chars()
+        // .take(lit_string.len() - 1)
+        .map(|l| l.to_string())
+        .collect::<Vec<_>>()
+        .join("', '");
+
+    format!("['{}']", arr)
+}
+
+#[proc_macro]
+pub fn str_arr_noun(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let mut iter = tokens.into_iter();
+
+    let Some(TokenTree::Literal(lit)) = iter.next() else {
+        panic!("Expected string!")
+    };
+
+    let arr = ident_to_array(lit, None);
+
+    proc_macro::TokenStream::from_str(&arr).unwrap()
+}
+
 #[proc_macro]
 pub fn consume_kw(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let mut iter = tokens.into_iter();
@@ -115,9 +144,295 @@ pub fn consume_kw(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
         panic!("Expected ident!")
     };
 
-    let fstr = format!("Some({}::from_span_start(self.make_position()))", ident);
+    let fstr = format!(
+        "Some({}::from_span_start(self.make_position(), kw_slice.len(), KeywordMod::empty()))",
+        ident
+    );
 
     proc_macro::TokenStream::from_str(&fstr).unwrap()
+}
+
+mod kw {
+    syn::custom_keyword!(other);
+    syn::custom_keyword!(noun);
+    syn::custom_keyword!(plural);
+    syn::custom_keyword!(verb);
+    syn::custom_keyword!(thirdp);
+    syn::custom_keyword!(pastparti);
+    syn::custom_keyword!(gerund);
+}
+
+enum MatchArm {
+    Noun {
+        noun: kw::noun,
+        ident: syn::LitStr,
+        plural: Option<(syn::Token![,], kw::plural, syn::Token![:], syn::LitStr)>,
+        fat: syn::Token![=>],
+        output: syn::Ident,
+    },
+    Verb {
+        verb: kw::verb,
+        ident: syn::LitStr,
+        thirdp: Option<(syn::Token![,], kw::thirdp, syn::Token![:], syn::LitStr)>,
+        pastparti: Option<(syn::Token![,], kw::pastparti, syn::Token![:], syn::LitStr)>,
+        gerund: Option<(syn::Token![,], kw::gerund, syn::Token![:], syn::LitStr)>,
+        fat: syn::Token![=>],
+        output: syn::Ident,
+    },
+    Other {
+        other: kw::other,
+        ident: syn::LitStr,
+        fat: syn::Token![=>],
+        output: syn::Ident,
+    },
+    Identity {
+        arm: syn::Arm,
+    },
+}
+
+impl Parse for MatchArm {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        if input.peek(kw::noun) {
+            let noun = input.parse()?;
+            let ident = input.parse()?;
+
+            let plural = if input.peek(kw::plural) {
+                Some((
+                    input.parse()?,
+                    input.parse()?,
+                    input.parse()?,
+                    input.parse()?,
+                ))
+            } else {
+                None
+            };
+
+            Ok(Self::Noun {
+                noun,
+                ident,
+                plural,
+                fat: input.parse()?,
+                output: input.parse()?,
+            })
+        } else if input.peek(kw::verb) {
+            let verb = input.parse()?;
+            let ident = input.parse()?;
+
+            let thirdp = if input.peek(kw::thirdp) {
+                Some((
+                    input.parse()?,
+                    input.parse()?,
+                    input.parse()?,
+                    input.parse()?,
+                ))
+            } else {
+                None
+            };
+
+            let pastparti = if input.peek(kw::pastparti) {
+                Some((
+                    input.parse()?,
+                    input.parse()?,
+                    input.parse()?,
+                    input.parse()?,
+                ))
+            } else {
+                None
+            };
+
+            let gerund = if input.peek(kw::gerund) {
+                Some((
+                    input.parse()?,
+                    input.parse()?,
+                    input.parse()?,
+                    input.parse()?,
+                ))
+            } else {
+                None
+            };
+
+            Ok(Self::Verb {
+                verb,
+                ident,
+                thirdp,
+                pastparti,
+                gerund,
+                fat: input.parse()?,
+                output: input.parse()?,
+            })
+        } else if input.peek(kw::other) {
+            Ok(Self::Other {
+                other: input.parse()?,
+                ident: input.parse()?,
+                fat: input.parse()?,
+                output: input.parse()?,
+            })
+        } else {
+            Ok(Self::Identity {
+                arm: input.parse()?,
+            })
+        }
+    }
+}
+
+struct MatchInput {
+    match_tok: syn::Token![match],
+    ident: syn::Ident,
+    _semi: syn::Token![;],
+
+    arms: Punctuated<MatchArm, syn::Token![,]>,
+}
+
+impl Parse for MatchInput {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        Ok(MatchInput {
+            match_tok: input.parse()?,
+            ident: input.parse()?,
+            _semi: input.parse()?,
+            arms: Punctuated::parse_terminated(input)?,
+        })
+    }
+}
+
+// fn is_vowel(c: char) -> bool {
+//     matches!(c, 'a' | )
+// }
+
+#[proc_macro]
+pub fn match_words(tokens: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let MatchInput {
+        match_tok,
+        ident,
+        arms,
+        ..
+    } = syn::parse_macro_input!(tokens as MatchInput);
+
+    let arms = arms.into_iter().map(|arm| match arm {
+        MatchArm::Noun {
+            noun, ident, fat, output, plural, ..
+        } => {
+            // Write irregular plural
+            let plural = plural.map(|plural| ident_to_array(plural.3.value(), None));
+            let arr = ident_to_array(ident.value(), None);
+            let let_token = syn::token::Let {
+                span: noun.span,
+            };
+
+            let output_body = quote! {{
+                #let_token mods = KeywordMod::NOUN;
+                Some(#output::from_span_start(self.make_position(), kw_slice.len(), mods))
+            }};
+
+            let left = TokenStream::from_str(&arr).unwrap();
+            let first = quote! {
+                #left #fat #output_body
+            };
+
+            if let Some(plural) = plural {
+                let left = TokenStream::from_str(&plural).unwrap();
+                let output_body = quote! {
+                    Some(#output::from_span_start(self.make_position(), kw_slice.len(), KeywordMod::NOUN | KeywordMod::PLURAL))
+                };
+                quote! {
+                    #first,
+                    #left #fat #output_body
+                }
+            } else {
+                let arr = ident_to_array(ident.value(), Some("s"));
+                let left = TokenStream::from_str(&arr).unwrap();
+                let output_body = quote! {
+                    Some(#output::from_span_start(self.make_position(), kw_slice.len(), KeywordMod::NOUN | KeywordMod::PLURAL))
+                };
+
+                quote! {
+                    #first,
+                    #left #fat #output_body
+                }
+            }
+        }
+        MatchArm::Verb { verb, ident, thirdp, pastparti, gerund, fat, output } => {
+            let thirdp = thirdp
+                .map(|thirdp| ident_to_array(thirdp.3.value(), None))
+                .unwrap_or_else(|| ident_to_array(ident.value(), Some("s")));
+
+            let pastparti = pastparti
+                .map(|pastparti| ident_to_array(pastparti.3.value(), None))
+                .unwrap_or_else(|| {
+                    let val = ident.value();
+                    if val.ends_with('e') {
+                        ident_to_array(ident.value(), Some("d"))
+                    } else {
+                        ident_to_array(ident.value(), Some("ed"))
+                    }
+                });
+
+            let gerund = gerund
+                .map(|gerund| ident_to_array(gerund.3.value(), None))
+                .unwrap_or_else(|| {
+                    let val = ident.value();
+                    if val.ends_with('e') {
+                        ident_to_array(&val[..val.len() - 1], Some("ing"))
+                    } else {
+                        ident_to_array(val, Some("ing"))
+                    }
+                });
+
+            let arr = ident_to_array(ident.value(), None);
+            let let_token = syn::token::Let {
+                span: verb.span,
+            };
+
+            let left = TokenStream::from_str(&arr).unwrap();
+            let mut first = quote! {
+                #left #fat {
+                    #let_token mods = KeywordMod::VERB;
+                    Some(#output::from_span_start(self.make_position(), kw_slice.len(), mods))
+                }
+            };
+
+            let left = TokenStream::from_str(&thirdp).unwrap();
+            first.extend(quote! {
+                ,#left #fat Some(#output::from_span_start(self.make_position(), kw_slice.len(), KeywordMod::VERB | KeywordMod::THIRD_PERSON))
+            });
+
+            let left = TokenStream::from_str(&pastparti).unwrap();
+            first.extend(quote! {
+                ,#left #fat Some(#output::from_span_start(self.make_position(), kw_slice.len(), KeywordMod::VERB | KeywordMod::PAST_PARTICIPLE))
+            });
+
+            let left = TokenStream::from_str(&gerund).unwrap();
+            first.extend(quote! {
+                ,#left #fat Some(#output::from_span_start(self.make_position(), kw_slice.len(), KeywordMod::VERB | KeywordMod::GERUND))
+            });
+
+            first
+        }
+        MatchArm::Other { other, ident, fat, output } => {
+            let arr = ident_to_array(ident.value(), None);
+            let let_token = syn::token::Let {
+                span: other.span,
+            };
+
+            let left = TokenStream::from_str(&arr).unwrap();
+            let first = quote! {
+                #left #fat {
+                    #let_token mods = KeywordMod::empty();
+                    Some(#output::from_span_start(self.make_position(), kw_slice.len(), mods))
+                }
+            };
+
+            first
+        }
+        MatchArm::Identity { arm } => arm.to_token_stream(),
+    });
+
+    let output = quote! {
+        #match_tok #ident {
+            #(#arms),*
+        }
+    };
+
+    output.into_token_stream().into()
 }
 
 fn derive_ast_node_helper(

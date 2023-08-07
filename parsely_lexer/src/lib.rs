@@ -240,7 +240,7 @@ impl Lexer {
             match token {
                 Some(tok @ Token::Eof(_)) => {
                     tokens.push(tok);
-                    break
+                    break;
                 }
                 Some(tok) => tokens.push(tok),
                 None => (),
@@ -300,45 +300,42 @@ impl Lexer {
         }
 
         use parsely_macros::*;
-        let token = match kw_slice {
-            str_arr!("true") => Some(Bool::from_value(true, slice, self.make_position())),
-            str_arr!("false") => Some(Bool::from_value(false, slice, self.make_position())),
+        let token = match_words! {
+            match kw_slice;
 
-            str_arr!("a") => consume_kw!(A),
-            str_arr!("and") => consume_kw!(And),
-            str_arr!("arguments") => consume_kw!(Arguments),
-            str_arr!("array") => consume_kw!(ArrayTy),
-            str_arr!("boolean") => consume_kw!(BoolTy),
-            str_arr!("by") => consume_kw!(By),
-            str_arr!("called") => consume_kw!(Called),
-            str_arr!("constant") => consume_kw!(Constant),
-            str_arr!("contains") => consume_kw!(Contains),
-            str_arr!("define") => consume_kw!(Define),
-            str_arr!("defines") => consume_kw!(Defines),
-            str_arr!("evaluates") => consume_kw!(Evaluates),
-            str_arr!("executes") => consume_kw!(Executes),
-            str_arr!("executing") => consume_kw!(Executing),
-            str_arr!("function") => consume_kw!(Function),
-            str_arr!("float") => consume_kw!(FloatTy),
-            str_arr!("integer") => consume_kw!(IntTy),
-            str_arr!("inputs") => consume_kw!(Inputs),
-            str_arr!("of") => consume_kw!(Of),
-            str_arr!("output") => consume_kw!(Output),
-            str_arr!("result") => consume_kw!(Result),
-            str_arr!("starts") => consume_kw!(Starts),
-            str_arr!("that") => consume_kw!(That),
-            str_arr!("then") => consume_kw!(Then),
-            str_arr!("the") => consume_kw!(The),
-            str_arr!("type") => consume_kw!(Type),
-            str_arr!("value") => consume_kw!(Value),
-            str_arr!("variable") => consume_kw!(Variable),
-            str_arr!("with") => consume_kw!(With),
+            other "a" => A,
+            other "and" => And,
+            noun "argument" => Argument,
+            noun "array" => ArrayTy,
+            noun "boolean" => BoolTy,
+            other "by" => By,
+            verb "call" => Call,
+            noun "constant" => Constant,
+            verb "contain" => Contain,
+            verb "define" => Define,
+            verb "evaluate" => Evaluate,
+            verb "execute" => Execute,
+            noun "function" => Function,
+            noun "float" => FloatTy,
+            noun "integer" => IntTy,
+            noun "input" => Input,
+            other "of" => Of,
+            noun "output" => Output,
+            noun "result" => Result,
+            verb "start" => Start,
+            other "that" => That,
+            other "then" => Then,
+            other "the" => The,
+            verb "type" => Type,
+            noun "value" => Value,
+            noun "variable" => Variable,
+            other "with" => With,
 
-            str_arr!("adding") => consume_kw!(Adding),
-            str_arr!("subtracting") => consume_kw!(Subtracting),
-            str_arr!("multiplying") => consume_kw!(Multiplying),
-            str_arr!("dividing") => consume_kw!(Dividing),
-            str_arr!("negating") => consume_kw!(Negating),
+            verb "add" => Add,
+            verb "subtract" => Subtract,
+            verb "multiply" => Multiply,
+            verb "divide" => Divide,
+            verb "negate" => Negate,
 
             _ => panic!(
                 "Unknown keyword: {}",
@@ -484,9 +481,9 @@ impl Lexer {
             ('"', _, _) => return Some(self.try_string_or_ident()),
 
             // Punctuation
-            (';', _, _) => Some(Semi::from_span_start(self.make_position())),
-            (':', _, _) => Some(Colon::from_span_start(self.make_position())),
-            (',', _, _) => Some(Comma::from_span_start(self.make_position())),
+            (';', _, _) => Some(Semi::from_span_start(self.make_position(), 1)),
+            (':', _, _) => Some(Colon::from_span_start(self.make_position(), 1)),
+            (',', _, _) => Some(Comma::from_span_start(self.make_position(), 1)),
 
             // Whitespace
             ('\r', Some('\n'), _) => {
@@ -523,6 +520,8 @@ impl Lexer {
 
 #[cfg(test)]
 mod tests {
+    use std::marker::PhantomData;
+
     use super::*;
 
     #[test]
@@ -535,10 +534,19 @@ define a function called "x"
         assert_eq!(
             tokens,
             vec![
-                Token::Define(Define(span!(1:0-6))),
-                Token::A(A(span!(1:7-8))),
-                Token::Function(Function(span!(1:9-17))),
-                Token::Called(Called(span!(1:18-24))),
+                Token::Keyword(
+                    Keyword::Define(Define(span!(1:0-6), PhantomData)),
+                    KeywordMod::VERB
+                ),
+                Token::Keyword(Keyword::A(A(span!(1:7-8))), KeywordMod::EMPTY),
+                Token::Keyword(
+                    Keyword::Function(Function(span!(1:9-17), PhantomData)),
+                    KeywordMod::NOUN
+                ),
+                Token::Keyword(
+                    Keyword::Call(Call(span!(1:18-24), PhantomData)),
+                    KeywordMod::PAST_PARTICIPLE
+                ),
                 Token::Ident(Ident {
                     value: "x".into(),
                     span: span!(1:25-28),

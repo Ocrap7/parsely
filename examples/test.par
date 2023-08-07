@@ -13,6 +13,5 @@ define a function called "foo"
         dividing the value of "x" and the value of "PI"
     then
 
-    determines if the value of "x" is larger than the value 5
 
     evaluates the result of adding the value 20 and the result of executing the function "calc"

@@ -1,4 +1,4 @@
-use parsely_lexer::tokens::{self, Token};
+use parsely_lexer::tokens::{self, Gerund, PastParticiple, Token};
 use parsely_macros::AsSpan;
 
 use crate::{Parse, ParseError, PunctuationLast};
@@ -52,7 +52,7 @@ pub struct Function {
 
 impl Parse for Function {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(Function{
+        Ok(Function {
             the_tok: stream.parse()?,
             value_tok: stream.parse()?,
             ident: stream.parse()?,
@@ -109,12 +109,12 @@ pub enum Expression {
 impl Parse for Expression {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peekn(1)? {
-            tokens::Tok![enum function] => stream.parse().map(Expression::Function),
-            tokens::Tok![enum value] => match stream.peekn(2) {
-                Ok(tokens::Tok![enum of]) => stream.parse().map(Expression::ValueOf),
+            tokens::Tok![enum function:noun] => stream.parse().map(Expression::Function),
+            tokens::Tok![enum value:noun] => match stream.peekn(2) {
+                Ok(tokens::Tok![enum of:other]) => stream.parse().map(Expression::ValueOf),
                 _ => stream.parse().map(Expression::Value),
             },
-            tokens::Tok![enum result] => stream.parse().map(Expression::Result),
+            tokens::Tok![enum result:noun] => stream.parse().map(Expression::Result),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),
                 expected: "expression".into(),
@@ -125,19 +125,25 @@ impl Parse for Expression {
 
 #[derive(Debug, Clone, AsSpan)]
 pub enum BinOperator {
-    Add(tokens::Adding),
-    Sub(tokens::Subtracting),
-    Mult(tokens::Multiplying),
-    Div(tokens::Dividing),
+    Add(tokens::Add<Gerund>),
+    Sub(tokens::Subtract<Gerund>),
+    Mult(tokens::Multiply<Gerund>),
+    Div(tokens::Divide<Gerund>),
 }
 
 impl Parse for BinOperator {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            Token::Adding(a) => Ok(BinOperator::Add(stream.next_ref(a))),
-            Token::Subtracting(a) => Ok(BinOperator::Sub(stream.next_ref(a))),
-            Token::Multiplying(a) => Ok(BinOperator::Mult(stream.next_ref(a))),
-            Token::Dividing(a) => Ok(BinOperator::Div(stream.next_ref(a))),
+            tokens::Tok![enum a @ add:gerund] => Ok(BinOperator::Add(stream.next_ref(a))),
+            tokens::Tok![enum a @ subtract:gerund] => {
+                Ok(BinOperator::Sub(stream.next_ref(a)))
+            }
+            tokens::Tok![enum a @ multiply:gerund] => {
+                Ok(BinOperator::Mult(stream.next_ref(a)))
+            }
+            tokens::Tok![enum a @ divide:gerund] => {
+                Ok(BinOperator::Div(stream.next_ref(a)))
+            }
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),
                 expected: "binary operator".into(),
@@ -148,15 +154,15 @@ impl Parse for BinOperator {
 
 #[derive(Debug, Clone, AsSpan)]
 pub enum UnaryOperator {
-    Exe(tokens::Executing),
-    Neg(tokens::Negating),
+    Exe(tokens::Execute<Gerund>),
+    Neg(tokens::Negate<Gerund>),
 }
 
 impl Parse for UnaryOperator {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            Token::Executing(n) => Ok(UnaryOperator::Exe(stream.next_ref(n))),
-            Token::Negating(n) => Ok(UnaryOperator::Neg(stream.next_ref(n))),
+            tokens::Tok![enum n @ execute:gerund] => Ok(UnaryOperator::Exe(stream.next_ref(n))),
+            tokens::Tok![enum n @ negate:gerund] => Ok(UnaryOperator::Neg(stream.next_ref(n))),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),
                 expected: "unary operator".into(),
@@ -319,8 +325,8 @@ impl Parse for OpList {
         let first = stream.parse().ok();
 
         match stream.peek() {
-            Ok(Token::Comma(c)) if first.is_some() => {
-                let comma = stream.next_ref(c);
+            Ok(tokens::Tok![enum c @ ,]) if first.is_some() => {
+                let comma: tokens::Comma = stream.next_ref(c);
                 let rest: PunctuationLast<ByOrImpl, tokens::Tok![,], tokens::Tok![and]> =
                     stream.parse()?;
 

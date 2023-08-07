@@ -1,9 +1,9 @@
-use parsely_lexer::tokens;
+use parsely_lexer::tokens::{self, PastParticiple, ThirdPerson};
 use parsely_macros::AsSpan;
 
 use crate::{
     expression::Expression,
-    item::{Inputs, Definite, Indefinite},
+    item::{Definite, Indefinite, Inputs},
     Parse, ParseError, Punctuation,
 };
 
@@ -17,9 +17,9 @@ pub enum Statement {
 impl Parse for Statement {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            tokens::Tok![enum defines] => Ok(Statement::Definition(stream.parse()?)),
-            tokens::Tok![enum executes] => Ok(Statement::Execute(stream.parse()?)),
-            tokens::Tok![enum evaluates] => Ok(Statement::Evaluate(stream.parse()?)),
+            tokens::Tok![enum define:third_person] => Ok(Statement::Definition(stream.parse()?)),
+            tokens::Tok![enum execute:third_person] => Ok(Statement::Execute(stream.parse()?)),
+            tokens::Tok![enum evaluate:third_person] => Ok(Statement::Evaluate(stream.parse()?)),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),
                 expected: "statement".into(),
@@ -30,9 +30,9 @@ impl Parse for Statement {
 
 #[derive(Debug, Clone, AsSpan)]
 pub struct Execute {
-    pub exe_tok: tokens::Executes,
+    pub exe_tok: tokens::Execute<ThirdPerson>,
     pub what: Definite,
-    pub called_tok: tokens::Called,
+    pub called_tok: tokens::Call<PastParticiple>,
     pub ident: tokens::Ident,
 }
 
@@ -48,7 +48,7 @@ impl Parse for Execute {
 }
 #[derive(Debug, Clone, AsSpan)]
 pub struct Evaluate {
-    pub eval_tok: tokens::Evaluates,
+    pub eval_tok: tokens::Evaluate<ThirdPerson>,
     pub expr: Box<Expression>,
 }
 
@@ -76,7 +76,7 @@ impl Parse for BlockList {
 
 #[derive(Debug, Clone, AsSpan)]
 pub struct MutableInit {
-    pub starts_tok: tokens::Starts,
+    pub starts_tok: tokens::Start<ThirdPerson>,
     pub with_tok: tokens::With,
     pub value: Expression,
 }
@@ -93,7 +93,7 @@ impl Parse for MutableInit {
 
 #[derive(Debug, Clone, AsSpan)]
 pub struct ConstantInit {
-    pub contains_tok: tokens::Contains,
+    pub contains_tok: tokens::Tok![contain:third_person],
     pub value: Expression,
 }
 
@@ -115,8 +115,8 @@ pub enum VariableInit {
 impl Parse for VariableInit {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            tokens::Tok![enum starts] => Ok(VariableInit::Mutable(stream.parse()?)),
-            tokens::Tok![enum contains] => Ok(VariableInit::Const(stream.parse()?)),
+            tokens::Tok![enum start:third_person] => Ok(VariableInit::Mutable(stream.parse()?)),
+            tokens::Tok![enum contain:third_person] => Ok(VariableInit::Const(stream.parse()?)),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),
                 expected: "variable initializer".into(),
@@ -150,7 +150,7 @@ impl Init {
 impl Parse for Init {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            tokens::Tok![enum starts] | tokens::Tok![enum contains] => {
+            tokens::Tok![enum start:third_person] | tokens::Tok![enum contain:third_person] => {
                 Ok(Init::Variable(stream.parse()?))
             }
             _ => Ok(Init::Function(stream.parse()?)),
@@ -160,9 +160,9 @@ impl Parse for Init {
 
 #[derive(Debug, Clone, AsSpan)]
 pub struct DefinitionAction {
-    pub def_tok: tokens::Defines,
+    pub def_tok: tokens::Define<ThirdPerson>,
     pub what: Indefinite,
-    pub called_tok: tokens::Called,
+    pub called_tok: tokens::Call<PastParticiple>,
     pub ident: tokens::Ident,
     pub args: Option<Inputs>,
     pub that_tok: tokens::That,

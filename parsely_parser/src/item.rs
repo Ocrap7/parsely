@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use parsely_lexer::{
-    tokens::{self, Token},
+    tokens::{self, Token, Plural, PastParticiple},
     AsSpan, Position, Span,
 };
 use parsely_macros::AsSpan;
@@ -24,9 +24,9 @@ impl Noun {
 impl Parse for Noun {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            Token::Function(func) => Ok(Noun::Function(stream.next_ref(func))),
-            Token::Variable(func) => Ok(Noun::Variable(stream.next_ref(func))),
-            Token::Constant(func) => Ok(Noun::Constant(stream.next_ref(func))),
+            tokens::Tok![enum func @ function:noun] => Ok(Noun::Function(stream.next_ref(func))),
+            tokens::Tok![enum func @ variable:noun] => Ok(Noun::Variable(stream.next_ref(func))),
+            tokens::Tok![enum func @ constant:noun] => Ok(Noun::Constant(stream.next_ref(func))),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),
                 expected: "noun".into(),
@@ -83,7 +83,7 @@ impl Parse for Argument {
 #[derive(Debug, Clone, AsSpan)]
 pub struct Inputs {
     pub with_tok: tokens::With,
-    pub inputs_tok: tokens::Inputs,
+    pub inputs_tok: tokens::Input<Plural>,
     pub args: Punctuation<Argument, tokens::Comma>,
 }
 
@@ -118,7 +118,7 @@ impl Parse for Output {
 pub struct Definition {
     pub def_tok: tokens::Define,
     pub what: Indefinite,
-    pub called_tok: tokens::Called,
+    pub called_tok: tokens::Call<PastParticiple>,
     pub ident: tokens::Ident,
     pub args: Option<Inputs>,
     pub and_out: Option<tokens::And>,
@@ -135,8 +135,8 @@ impl Parse for Definition {
         let ident = stream.parse()?;
 
         let args = if what.noun.is_fn()
-            && matches!(stream.peek()?, Token::With(_))
-            && matches!(stream.peekn(1)?, Token::Inputs(_))
+            && matches!(stream.peek()?, tokens::Tok![enum with:other])
+            && matches!(stream.peekn(1)?, tokens::Tok![enum input:plural])
         {
             Some(stream.parse()?)
         } else {
@@ -177,7 +177,7 @@ pub enum TopLevelItem {
 impl Parse for TopLevelItem {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            tokens::Tok![enum define] => stream.parse().map(TopLevelItem::Definition),
+            tokens::Tok![enum define:verb] => stream.parse().map(TopLevelItem::Definition),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),
                 expected: "top level item".into(),
@@ -274,7 +274,11 @@ impl Program {
         };
         let start_index = start_index + 1; // Get the char after the linefeed
 
-        let (end_index, _) = self.source.match_indices('\n').nth(span.end.line).unwrap_or((self.source.len(), ""));
+        let (end_index, _) = self
+            .source
+            .match_indices('\n')
+            .nth(span.end.line)
+            .unwrap_or((self.source.len(), ""));
         let end_index = end_index - self.line_ending().as_str().len() + 1; // Get the char after the linefeed
 
         Some(&self.source[start_index..end_index])

@@ -3,7 +3,7 @@ use parsely_macros::AsSpan;
 
 use crate::{
     expression::Expression,
-    item::{Arguments, Definite, Indefinite},
+    item::{Inputs, Definite, Indefinite},
     Parse, ParseError, Punctuation,
 };
 
@@ -11,6 +11,7 @@ use crate::{
 pub enum Statement {
     Definition(DefinitionAction),
     Execute(Execute),
+    Evaluate(Evaluate),
 }
 
 impl Parse for Statement {
@@ -18,6 +19,7 @@ impl Parse for Statement {
         match stream.peek()? {
             tokens::Tok![enum defines] => Ok(Statement::Definition(stream.parse()?)),
             tokens::Tok![enum executes] => Ok(Statement::Execute(stream.parse()?)),
+            tokens::Tok![enum evaluates] => Ok(Statement::Evaluate(stream.parse()?)),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),
                 expected: "statement".into(),
@@ -41,6 +43,20 @@ impl Parse for Execute {
             what: stream.parse()?,
             called_tok: stream.parse()?,
             ident: stream.parse()?,
+        })
+    }
+}
+#[derive(Debug, Clone, AsSpan)]
+pub struct Evaluate {
+    pub eval_tok: tokens::Evaluates,
+    pub expr: Box<Expression>,
+}
+
+impl Parse for Evaluate {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(Evaluate {
+            eval_tok: stream.parse()?,
+            expr: stream.parse()?,
         })
     }
 }
@@ -148,7 +164,7 @@ pub struct DefinitionAction {
     pub what: Indefinite,
     pub called_tok: tokens::Called,
     pub ident: tokens::Ident,
-    pub args: Option<Arguments>,
+    pub args: Option<Inputs>,
     pub that_tok: tokens::That,
     pub init: Init,
 }

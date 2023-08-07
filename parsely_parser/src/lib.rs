@@ -106,7 +106,7 @@ impl ParseStream<'_> {
     }
 
     pub fn peek_eof(&self) -> bool {
-        matches!(self.peek(), Ok(Token::Eof))
+        matches!(self.peek(), Ok(Token::Eof(_)))
     }
 
     /// Increment the current token without returning it

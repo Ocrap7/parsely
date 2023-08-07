@@ -1,4 +1,8 @@
-use inkwell::types::{AnyTypeEnum, BasicTypeEnum};
+use bitflags::Flags;
+use inkwell::{
+    types::{AnyTypeEnum, BasicTypeEnum},
+    values::{AnyValue, BasicValueEnum},
+};
 use parsely_lexer::{AsSpan, Span};
 use parsely_parser::expression::{
     BinOperator, BinOrUnary, ByOrImpl, Expression, Literal, UnaryOperator,
@@ -6,7 +10,7 @@ use parsely_parser::expression::{
 
 use crate::{
     attempt,
-    llvm_value::{AsValue, TypeBuilder, Value},
+    llvm_value::{AsValue, TypeBuilder, TypeFlags, Value},
     module::{Module, EMPTY_NAME},
     raise, ErrorHelper, Result,
 };
@@ -114,8 +118,13 @@ impl<'ctx> Module<'ctx> {
                     span = span.join(expr.as_span());
                 }
 
-                acc.caught_span(span)
+                if acc.is_err() {
+                    acc.caught_span(span)
+                } else {
+                    acc
+                }
             }
+            _ => unimplemented!(),
         }
     }
 
@@ -137,11 +146,11 @@ impl<'ctx> Module<'ctx> {
                 };
 
                 match (op, &left.ty.llvm, &right.ty.llvm) {
+                    // TODO: maybe we should match on llvm types instead of saying into
                     // Adding ints
                     (BinOperator::Add(_), AnyTypeEnum::IntType(l), AnyTypeEnum::IntType(r))
                         if l.size_of() == r.size_of() =>
                     {
-                        // TODO: maybe we should match on llvm types instead of saying into
                         let result = self.builder.build_int_add(
                             left.llvm.into_int_value(),
                             right.llvm.into_int_value(),
@@ -150,25 +159,89 @@ impl<'ctx> Module<'ctx> {
 
                         Ok(result.as_value(left.ty.clone()))
                     }
+                    (BinOperator::Sub(_), AnyTypeEnum::IntType(l), AnyTypeEnum::IntType(r))
+                        if l.size_of() == r.size_of() =>
+                    {
+                        let result = self.builder.build_int_sub(
+                            left.llvm.into_int_value(),
+                            right.llvm.into_int_value(),
+                            EMPTY_NAME,
+                        );
 
+                        Ok(result.as_value(left.ty.clone()))
+                    }
+                    (BinOperator::Mult(_), AnyTypeEnum::IntType(l), AnyTypeEnum::IntType(r))
+                        if l.size_of() == r.size_of() =>
+                    {
+                        let result = self.builder.build_int_mul(
+                            left.llvm.into_int_value(),
+                            right.llvm.into_int_value(),
+                            EMPTY_NAME,
+                        );
+
+                        Ok(result.as_value(left.ty.clone()))
+                    }
+
+                    (BinOperator::Div(_), AnyTypeEnum::IntType(l), AnyTypeEnum::IntType(r))
+                        if l.size_of() == r.size_of()
+                            && left.ty.flags.contains(TypeFlags::SIGNED)
+                                == right.ty.flags.contains(TypeFlags::SIGNED) =>
+                    {
+                        let result = if left.ty.flags.contains(TypeFlags::SIGNED) {
+                            self.builder.build_int_signed_div(
+                                left.llvm.into_int_value(),
+                                right.llvm.into_int_value(),
+                                EMPTY_NAME,
+                            )
+                        } else {
+                            self.builder.build_int_unsigned_div(
+                                left.llvm.into_int_value(),
+                                right.llvm.into_int_value(),
+                                EMPTY_NAME,
+                            )
+                        };
+
+                        Ok(result.as_value(left.ty.clone()))
+                    }
                     // Incompatible types for operator
                     _ => Err(raise!(@mismatch => self, left_span, right_raw.as_span())).caught(),
                 }
             }
             Op::Uni { expr: expr_raw, op } => {
+                // TODO: this is a little weird. Maybe extend functions to be values?
+                match op {
+                    UnaryOperator::Exe(_) => {
+                        let ValOrExpr::Expr(expr @ Expression::Function(f)) = expr_raw else {
+                            panic!("Expected only a function here");
+                        };
+
+                        let Some(func) = self.symbol_table.find_function(&f.ident.value) else {
+                            return Err(raise!(@not_found => self, f.ident.clone())).caught();
+                        };
+
+                        let val = self.builder.build_call(func.fn_val, &[], EMPTY_NAME);
+                        return BasicValueEnum::try_from(val.as_any_value_enum())
+                            .map(|val| Value {
+                                llvm: val,
+                                ty: func.return_type.as_ref().unwrap().clone(),
+                            })
+                            .map_err(|_| raise!(@mismatch => self, expr.as_span()));
+                    }
+                    _ => (),
+                };
+
                 let expr_span = expr_raw.as_span();
                 let expr = expr_raw.val_or(|expr| self.gen_expression(expr))?;
 
-                match op {
-                    UnaryOperator::Neg(_) => match &expr.ty.llvm {
-                        AnyTypeEnum::IntType(_) => {
-                            let result = self
-                                .builder
-                                .build_int_neg(expr.llvm.into_int_value(), EMPTY_NAME);
-                            Ok(result.as_value(expr.ty.clone()))
-                        }
-                        _ => Err(raise!(@mismatch => self, expr_span)).caught(),
-                    },
+                match (op, expr.ty.llvm) {
+                    (UnaryOperator::Neg(_), AnyTypeEnum::IntType(_)) => {
+                        let result = self
+                            .builder
+                            .build_int_neg(expr.llvm.into_int_value(), EMPTY_NAME);
+                        Ok(result.as_value(expr.ty.clone()))
+                    }
+                    (UnaryOperator::Exe(_), AnyTypeEnum::FunctionType(_)) => unimplemented!(),
+                    _ => Err(raise!(@mismatch => self, expr_span)).caught(),
                 }
             }
         }

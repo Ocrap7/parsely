@@ -237,12 +237,15 @@ impl Lexer {
     fn collect(&mut self, group: Option<GroupBracket>) -> Vec<Token> {
         let mut tokens = Vec::new();
         while let Some(token) = self.next(group) {
-            if let Some(token) = token {
-                tokens.push(token)
+            match token {
+                Some(tok @ Token::Eof(_)) => {
+                    tokens.push(tok);
+                    break
+                }
+                Some(tok) => tokens.push(tok),
+                None => (),
             }
         }
-
-        tokens.push(Token::Eof);
 
         tokens
     }
@@ -252,7 +255,12 @@ impl Lexer {
     /// Returns `None` if the end of the buffer has been reached.
     ///
     fn try_keyword_or_ident(&mut self) -> Option<Token> {
-        let slice = self.chars.get(self.index..)?;
+        let Some(slice) = self.chars.get(self.index..) else {
+            let mut pos = self.make_position();
+            pos.column -= 2;
+
+            return Some(Token::Eof(pos.join(pos)));
+        };
 
         let int_ind = slice
             .iter()
@@ -307,11 +315,15 @@ impl Lexer {
             str_arr!("contains") => consume_kw!(Contains),
             str_arr!("define") => consume_kw!(Define),
             str_arr!("defines") => consume_kw!(Defines),
+            str_arr!("evaluates") => consume_kw!(Evaluates),
             str_arr!("executes") => consume_kw!(Executes),
+            str_arr!("executing") => consume_kw!(Executing),
             str_arr!("function") => consume_kw!(Function),
             str_arr!("float") => consume_kw!(FloatTy),
             str_arr!("integer") => consume_kw!(IntTy),
+            str_arr!("inputs") => consume_kw!(Inputs),
             str_arr!("of") => consume_kw!(Of),
+            str_arr!("output") => consume_kw!(Output),
             str_arr!("result") => consume_kw!(Result),
             str_arr!("starts") => consume_kw!(Starts),
             str_arr!("that") => consume_kw!(That),

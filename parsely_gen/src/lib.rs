@@ -2,11 +2,15 @@ use std::fmt::Display;
 
 use colored::Colorize;
 use module::Module;
-use parsely_lexer::{tokens, AsSpan, Span};
-use parsely_parser::item::{Program, TokenCache};
+use parsely_lexer::{tokens::{self, Token}, AsSpan, Span};
+use parsely_parser::{
+    item::{Program, TokenCache},
+    types::OfType,
+};
 
 pub mod module;
 
+mod types;
 mod expression;
 mod item;
 mod llvm_value;
@@ -90,15 +94,11 @@ impl Diagnostic {
                 ident.as_span().end.line.to_string().len()
             }
             Diagnostic::IncompatibleType(ty) => {
-                write!(f, "{}", "Unexpected type".to_string().bold())?;
+                write!(f, "{}", format!("Unexpected type").bold())?;
                 ty.end.line.to_string().len()
             }
             Diagnostic::IncompatibleTypes(left, right) => {
-                write!(
-                    f,
-                    "{}",
-                    "Types don't match in expression".to_string().bold()
-                )?;
+                write!(f, "{}", format!("Types don't match in expression").bold())?;
                 left.end.line.max(right.end.line).to_string().len()
             }
             Diagnostic::Message(msg, span, _) => {
@@ -150,7 +150,11 @@ impl Diagnostic {
             }
 
             if highlight.start.line == highlight.end.line {
-                write!(f, "{}", &line[highlight.start.column..highlight.end.column])?;
+                write!(
+                    f,
+                    "{}",
+                    &line[highlight.start.column..highlight.end.column],
+                )?;
             } else if line_offset == 0 {
                 write!(f, "{}", &line[highlight.start.column..])?;
             } else if line_offset > 0 {
@@ -187,8 +191,7 @@ impl Diagnostic {
                 DiagnosticLevel::Warning => carets.yellow(),
                 DiagnosticLevel::Error => carets.red(),
                 _ => carets.white(),
-            }
-            .bold();
+            }.bold();
 
             writeln!(
                 f,
@@ -218,7 +221,7 @@ impl Diagnostic {
                 .expect("Unable to slice into source file!");
 
             for (i, line) in lines.lines().enumerate() {
-                write_line(f, span, &peeked_span, i, line)?;
+                write_line(f, &span, &peeked_span, i, line)?;
             }
 
             Ok(())
@@ -232,14 +235,14 @@ impl Diagnostic {
                 write_span(&span)?;
             }
             Diagnostic::IncompatibleType(ty) => {
-                write_span(ty)?;
+                write_span(&ty)?;
             }
             Diagnostic::IncompatibleTypes(left, right) => {
-                write_span(left)?;
-                write_span(right)?;
+                write_span(&left)?;
+                write_span(&right)?;
             }
             Diagnostic::Message(_, span, _) => {
-                write_span(span)?;
+                write_span(&span)?;
             }
             _ => unimplemented!(),
         }
@@ -256,10 +259,11 @@ impl Display for Diagnostic {
     }
 }
 
+
 /// Helper struct for easy formatting
 ///
 /// # Example
-///
+/// 
 /// ```
 /// let fmtr = DiagnosticFmt(&module.errors, &module, program);
 /// println!("{}", fmtr);
@@ -268,7 +272,7 @@ pub struct DiagnosticFmt<'a, 'ctx>(&'a [Diagnostic], &'a Module<'ctx>, &'a Progr
 
 impl Display for DiagnosticFmt<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut cache = TokenCache::new(self.2);
+        let mut cache = TokenCache::new(&self.2);
         for diag in self.0 {
             diag.format(self.1, self.2, &mut cache, f)?;
         }
@@ -314,6 +318,16 @@ macro_rules! attempt {
         match $res {
             Ok(o) => Ok(o),
             Err($crate::Diagnostic::Caught(e)) => Err($crate::Diagnostic::Caught(e)),
+            Err(e) => {
+                $self.push_error(e.clone());
+                Err(e)
+            }
+        }
+    }};
+    (@stmt $self:expr, $res:expr) => {{
+        match $res {
+            Ok(_) => Ok(()),
+            Err($crate::Diagnostic::Caught(_)) => Ok(()),
             Err(e) => {
                 $self.push_error(e.clone());
                 Err(e)

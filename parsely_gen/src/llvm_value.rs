@@ -3,6 +3,7 @@ bitflags::bitflags! {
     pub struct TypeFlags: u16 {
         const SIGNED = 0b1;
         const MUTABLE = 0b10;
+        const SLICE = 0b100;
     }
 }
 
@@ -120,6 +121,7 @@ impl<'ctx> std::ops::Deref for Type<'ctx> {
     }
 }
 
+#[derive(Debug)]
 pub struct Value<'a> {
     pub llvm: inkwell::values::BasicValueEnum<'a>,
     pub ty: Type<'a>,

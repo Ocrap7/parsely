@@ -44,6 +44,23 @@ impl Parse for Value {
 }
 
 #[derive(Debug, Clone, AsSpan)]
+pub struct Function {
+    pub the_tok: tokens::The,
+    pub value_tok: tokens::Function,
+    pub ident: tokens::Ident,
+}
+
+impl Parse for Function {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(Function{
+            the_tok: stream.parse()?,
+            value_tok: stream.parse()?,
+            ident: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, AsSpan)]
 pub struct ResultOf {
     pub the_tok: tokens::The,
     pub result: tokens::Result,
@@ -84,6 +101,7 @@ impl Parse for ValueOf {
 #[derive(Debug, Clone, AsSpan)]
 pub enum Expression {
     Value(Value),
+    Function(Function),
     ValueOf(ValueOf),
     Result(ResultOf),
 }
@@ -91,6 +109,7 @@ pub enum Expression {
 impl Parse for Expression {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peekn(1)? {
+            tokens::Tok![enum function] => stream.parse().map(Expression::Function),
             tokens::Tok![enum value] => match stream.peekn(2) {
                 Ok(tokens::Tok![enum of]) => stream.parse().map(Expression::ValueOf),
                 _ => stream.parse().map(Expression::Value),
@@ -129,12 +148,14 @@ impl Parse for BinOperator {
 
 #[derive(Debug, Clone, AsSpan)]
 pub enum UnaryOperator {
+    Exe(tokens::Executing),
     Neg(tokens::Negating),
 }
 
 impl Parse for UnaryOperator {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
+            Token::Executing(n) => Ok(UnaryOperator::Exe(stream.next_ref(n))),
             Token::Negating(n) => Ok(UnaryOperator::Neg(stream.next_ref(n))),
             tok => Err(ParseError::UnexpectedToken {
                 found: tok.clone(),

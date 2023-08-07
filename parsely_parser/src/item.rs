@@ -81,18 +81,35 @@ impl Parse for Argument {
 }
 
 #[derive(Debug, Clone, AsSpan)]
-pub struct Arguments {
+pub struct Inputs {
     pub with_tok: tokens::With,
-    pub args_tok: tokens::Arguments,
+    pub inputs_tok: tokens::Inputs,
     pub args: Punctuation<Argument, tokens::Comma>,
 }
 
-impl Parse for Arguments {
+impl Parse for Inputs {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(Arguments {
+        Ok(Inputs {
             with_tok: stream.parse()?,
-            args_tok: stream.parse()?,
+            inputs_tok: stream.parse()?,
             args: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone, AsSpan)]
+pub struct Output {
+    pub with_tok: tokens::With,
+    pub output_tok: tokens::Output,
+    pub of_type: types::OfType,
+}
+
+impl Parse for Output {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(Output {
+            with_tok: stream.parse()?,
+            output_tok: stream.parse()?,
+            of_type: stream.parse()?,
         })
     }
 }
@@ -103,7 +120,9 @@ pub struct Definition {
     pub what: Indefinite,
     pub called_tok: tokens::Called,
     pub ident: tokens::Ident,
-    pub args: Option<Arguments>,
+    pub args: Option<Inputs>,
+    pub and_out: Option<tokens::And>,
+    pub out: Option<Output>,
     pub that_tok: tokens::That,
     pub init: Init,
 }
@@ -115,7 +134,22 @@ impl Parse for Definition {
         let called_tok = stream.parse()?;
         let ident = stream.parse()?;
 
-        let args = if what.noun.is_fn() && matches!(stream.peek()?, Token::With(_)) {
+        let args = if what.noun.is_fn()
+            && matches!(stream.peek()?, Token::With(_))
+            && matches!(stream.peekn(1)?, Token::Inputs(_))
+        {
+            Some(stream.parse()?)
+        } else {
+            None
+        };
+
+        let and_out = if args.is_some() {
+            stream.parse()?
+        } else {
+            None
+        };
+
+        let out = if and_out.is_some() || args.is_none() {
             Some(stream.parse()?)
         } else {
             None
@@ -127,6 +161,8 @@ impl Parse for Definition {
             called_tok,
             ident,
             args,
+            and_out,
+            out,
             that_tok: stream.parse()?,
             init: stream.parse()?,
         })
@@ -238,7 +274,7 @@ impl Program {
         };
         let start_index = start_index + 1; // Get the char after the linefeed
 
-        let (end_index, _) = self.source.match_indices('\n').nth(span.end.line)?;
+        let (end_index, _) = self.source.match_indices('\n').nth(span.end.line).unwrap_or((self.source.len(), ""));
         let end_index = end_index - self.line_ending().as_str().len() + 1; // Get the char after the linefeed
 
         Some(&self.source[start_index..end_index])
@@ -314,7 +350,13 @@ impl<'a> TokenCache<'a> {
             let tokens = &self.program.tokens[start_index..];
             let end_index = tokens
                 .iter()
-                .position(|tok| tok.as_span().start.line != line)
+                .position(|tok| {
+                    if let Token::Eof(_) = tok {
+                        false
+                    } else {
+                        tok.as_span().start.line != line
+                    }
+                })
                 .unwrap_or(tokens.len());
 
             self.lines

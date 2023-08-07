@@ -54,7 +54,7 @@ macro_rules! define_tokens {
             String(String),
             Char(Char),
             Group(Group),
-            Eof,
+            Eof($crate::Span),
            $(
                 $struct_name($struct_name)
            ),*
@@ -70,7 +70,7 @@ macro_rules! define_tokens {
                     $token_enum::String(i) => i.span.len(),
                     $token_enum::Char(i) => i.span.len(),
                     $token_enum::Group(_) => 0,
-                    $token_enum::Eof => 0,
+                    $token_enum::Eof(_) => 0,
                     $(
                         $token_enum::$struct_name(_) => $struct_name::len()
                     ),*
@@ -101,7 +101,7 @@ macro_rules! define_tokens {
                     $token_enum::String(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Char(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Group(i) => std::fmt::Display::fmt(i, f),
-                    $token_enum::Eof => write!(f, "eof"),
+                    $token_enum::Eof(_) => write!(f, "eof"),
                     $(
                         $token_enum::$struct_name(tok) => std::fmt::Display::fmt(tok, f)
                     ),*
@@ -119,7 +119,7 @@ macro_rules! define_tokens {
                     $token_enum::String(i) => i.as_span(),
                     $token_enum::Char(i) => i.as_span(),
                     $token_enum::Group(i) => i.as_span(),
-                    $token_enum::Eof => panic!("EOF doesn't have a span"),
+                    $token_enum::Eof(i) => *i,
                     $(
                         $token_enum::$struct_name(tok) => tok.as_span()
                     ),*
@@ -388,11 +388,15 @@ define_tokens! {
         Contains = contains,
         Define = define,
         Defines = defines,
+        Evaluates = evaluates,
         Executes = executes,
+        Executing = executing,
         Function = function,
         FloatTy = float,
+        Inputs = inputs,
         IntTy = integer,
         Of = of,
+        Output = output,
         Result = result,
         Starts = starts,
         That = that,

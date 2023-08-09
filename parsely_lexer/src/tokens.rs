@@ -34,6 +34,12 @@ macro_rules! define_tokens {
                     write!(f, "{}", stringify!($st))
                 }
             }
+
+            impl $crate::AsSpan for $struct_name {
+                fn as_span(&self) -> $crate::Span {
+                    self.0
+                }
+            }
         )*
 
         #[derive(Debug, Clone, PartialEq)]

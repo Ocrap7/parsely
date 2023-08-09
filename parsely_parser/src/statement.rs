@@ -1,6 +1,6 @@
 use parsely_lexer::tokens::{self, Group, GroupBracket, Token};
 
-use crate::{expr::Expression, types::Type, Braces, Brackets, Parse};
+use crate::{expression::Expression, types::Type, Braces, Brackets, Parse};
 
 #[derive(Debug, Clone)]
 pub enum Statement {

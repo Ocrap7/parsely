@@ -3,6 +3,10 @@ use tokens::*;
 #[macro_use]
 pub mod tokens;
 
+pub trait AsSpan {
+    fn as_span(&self) -> Span;
+}
+
 /// Represents a single position in a source file
 ///
 /// `line` line in the file (starting at 0)
@@ -38,6 +42,78 @@ impl Position {
 pub struct Span {
     pub start: Position,
     pub end: Position,
+}
+
+impl Default for Span {
+    fn default() -> Self {
+        Span::EMPTY
+    }
+}
+
+impl<T: AsSpan> AsSpan for &T {
+    fn as_span(&self) -> Span {
+        AsSpan::as_span(*self)
+    }
+}
+
+impl<T: AsSpan> AsSpan for Box<T> {
+    fn as_span(&self) -> Span {
+        self.as_ref().as_span()
+    }
+}
+
+impl<L, R> From<(L, R)> for Span
+where
+    L: AsSpan,
+    R: AsSpan,
+{
+    fn from(value: (L, R)) -> Self {
+        Span {
+            start: value.0.as_span().start,
+            end: value.1.as_span().end,
+        }
+    }
+}
+
+impl AsSpan for (Span, Span) {
+    fn as_span(&self) -> Span {
+        Span {
+            start: self.0.start,
+            end: self.1.end,
+        }
+    }
+}
+
+impl AsSpan for (Position, Position) {
+    fn as_span(&self) -> Span {
+        Span {
+            start: self.0,
+            end: self.1,
+        }
+    }
+}
+
+impl<T: AsSpan> AsSpan for Vec<T> {
+    fn as_span(&self) -> Span {
+        let first = self.first().unwrap();
+        let last = self.last().unwrap();
+        first.as_span().join(last.as_span())
+    }
+}
+
+// impl <T: Into<Span>> AsSpan for T {
+//     fn as_span(&self) -> Span {
+//         self.into()
+//     }
+// }
+
+impl<L: AsSpan, R: AsSpan> AsSpan for (L, R) {
+    fn as_span(&self) -> Span {
+        Span {
+            start: self.0.as_span().start,
+            end: self.1.as_span().end,
+        }
+    }
 }
 
 #[macro_export]

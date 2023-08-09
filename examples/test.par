@@ -1,10 +1,27 @@
 
-int32 get_number(int32 i[]) {
-    return i;
+type Int = int32
+type Array = [int32]
+type Tuple = [int32, bool, float]
+type Ptr = @int32
+type MutPtr #int32
+type Optional = int32?
+
+type Struct = {
+    d: int
 }
 
-int32 main() {
-    int32 arr[] = [1, 2, 3, 4];
-    get_number(arr[..]);
-    int32 c = 5;
+type Union = 
+| int32 
+| @int32
+
+type UnionNamed =
+| value: int32 
+| reference: @int32
+
+type BackedUnionNamed = u8
+| value: int32 
+| reference: @int32
+
+let func = (T: type): type => {
+
 }

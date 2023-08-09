@@ -1,6 +1,6 @@
 use parsely_lexer::tokens::{self};
 
-use crate::{statement::Statement, types::Type, Braces, Parens, Parse, Punctuation};
+use crate::{statement::{Statement, ArrayDimension}, types::Type, Braces, Parens, Parse, Punctuation};
 
 #[derive(Debug, Clone)]
 pub enum TopLevelItem {
@@ -55,6 +55,7 @@ impl Parse for Struct {
 pub struct Parameter {
     pub parameter_type: Box<Type>,
     pub ident: tokens::Ident,
+    pub arrays: Vec<ArrayDimension>,
 }
 
 impl Parse for Parameter {
@@ -62,6 +63,7 @@ impl Parse for Parameter {
         Ok(Parameter {
             parameter_type: stream.parse()?,
             ident: stream.parse()?,
+            arrays: stream.parse()?,
         })
     }
 }

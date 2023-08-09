@@ -37,6 +37,39 @@ impl SymbolTable {
         }
     }
 
+    pub fn insert_new(&mut self, name: &str, ty: GenType) -> Option<String> {
+        if let Some(scope) = self.scopes.last_mut() {
+            let mut fname = name.to_string();
+            let mut i = 0;
+
+            while scope.symbols.contains_key(&fname) {
+                fname = format!("{name}{i}");
+                i += 1;
+            }
+
+            scope.symbols.insert(fname.clone(), ty);
+            Some(fname)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_temp(&mut self, name: &str) -> Option<String> {
+        if let Some(scope) = self.scopes.last_mut() {
+            let mut fname = name.to_string();
+            let mut i = 0;
+
+            while scope.symbols.contains_key(&fname) {
+                fname = format!("{name}{i}");
+                i += 1;
+            }
+
+            Some(fname)
+        } else {
+            None
+        }
+    }
+
     pub fn find_symbol(&self, name: &str) -> Option<&GenType> {
         self.iter().rev().find_map(|map| map.get(name))
     }

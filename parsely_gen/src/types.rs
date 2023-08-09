@@ -5,7 +5,7 @@ use std::{
 
 use parsely_parser::{
     statement::ArrayDimension,
-    types::{Type, TypeInt},
+    types::{Type, TypeArray, TypeInt},
 };
 
 use crate::{
@@ -16,11 +16,13 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GenType {
     Int(usize),
+    Char,
     Float,
     String,
     Array(Box<GenType>, Option<NonZeroUsize>),
     Slice(Box<GenType>),
     Named(String),
+    Function(Box<GenType>),
     Void,
 }
 
@@ -45,6 +47,7 @@ impl GenType {
                 .into_iter()
                 .chain([None].into_iter())
                 .collect(),
+            GenType::String => vec![None],
             _ => Vec::new(),
         }
     }
@@ -70,14 +73,13 @@ impl GenType {
             _ => String::new(),
         }
     }
-
-
 }
 
 impl Display for GenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             GenType::Void => write!(f, "void"),
+            GenType::Char => write!(f, "char"),
             GenType::Float => write!(f, "float"),
             GenType::Int(n) => write!(f, "int{}", n),
             GenType::String => write!(f, "struct str"),
@@ -98,6 +100,7 @@ impl Display for GenType {
                 Ok(())
             }
             GenType::Named(name) => write!(f, "{}", name),
+            GenType::Function(ret) => write!(f, "func: {ret}"),
         }
     }
 }
@@ -165,4 +168,130 @@ impl Module {
             _ => unimplemented!(),
         }
     }
+
+    /// This function writes a type/name declaration to `buffer` depending on the given parameters.
+    ///
+    /// `decl_ty` is the type the user wrote for the declared variable
+    /// `decl_name` is the name of the declared variable
+    /// `decl_arrays` are the array dimensions after the variable name (int a[][2])
+    ///
+    /// `init_ty` this is the type of the variable initializer (if there is one)
+    ///
+    /// This function will convert arrays to slice types and char arrays to strings.
+    pub(crate) fn adjust_type_decl_init(
+        &mut self,
+        buffer: &mut impl Write,
+        decl_ty: &Type,
+        decl_name: &str,
+        decl_arrays: &[ArrayDimension],
+
+        init_ty: Option<(&GenType, bool)>,
+    ) -> Result<()> {
+        match init_ty {
+            Some((ty @ GenType::Array(_, _), temp)) => {
+                assert!(decl_arrays.len() > 0);
+
+                let mut skip = 0;
+                if let Type::Named(i) = decl_ty {
+                    if i.value == "char" {
+                        write!(buffer, "struct str")?;
+                        skip = 1;
+                    } else {
+                        self.gen_type(buffer, decl_ty)?;
+                    }
+                } else {
+                    self.gen_type(buffer, decl_ty)?;
+                }
+
+                write!(buffer, " {}", decl_name)?;
+
+                let dimensions = &ty.dimensions()[skip..];
+                self.symbol_table.insert(decl_name, ty.clone());
+
+                let decl_ty: Vec<_> = decl_arrays
+                    .iter()
+                    .skip(skip)
+                    .map(|dim| dim.dimension.value.map(|v| v.value as usize))
+                    .collect();
+
+                if decl_ty.len() != dimensions.len() {
+                    for dim in decl_ty {
+                        write!(buffer, "[")?;
+                        if let Some(size) = dim {
+                            write!(buffer, "{}", size)?;
+                        }
+                        write!(buffer, "]")?;
+                    }
+                } else {
+                    for dim in dimensions {
+                        write!(buffer, "[")?;
+                        if let Some(size) = dim {
+                            write!(buffer, "{}", size)?;
+                        }
+                        write!(buffer, "]")?;
+                    }
+                }
+            }
+            _ => {
+                'outer: {
+                    if decl_arrays.len() > 0 {
+                        if let Type::Named(i) = decl_ty {
+                            if i.value == "char" {
+                                write!(buffer, "struct str")?;
+
+                                if let Some((ty, temp)) = init_ty {
+                                    self.symbol_table.insert(decl_name, ty.clone());
+                                } else {
+                                    self.symbol_table.insert(decl_name, GenType::String);
+                                }
+
+                                break 'outer;
+                            }
+                        }
+
+                        write!(buffer, "struct slice")?;
+
+                        let ty = Type::Slice(TypeArray {
+                            arrays: decl_arrays.to_vec(),
+                            element: Box::new(decl_ty.clone()),
+                        });
+                        let gt = GenType::from(&ty);
+
+                        if let Some((ty, temp)) = init_ty {
+                            self.symbol_table.insert(decl_name, ty.clone());
+                        } else {
+                            self.symbol_table.insert(decl_name, gt);
+                        }
+                    } else {
+                        self.gen_type(buffer, decl_ty)?;
+
+                        if let Some((ty, temp)) = init_ty {
+                            self.symbol_table.insert(&decl_name, ty.clone());
+                        } else {
+                            self.symbol_table.insert(decl_name, decl_ty.into());
+                        }
+                    }
+                }
+
+                write!(buffer, " {}", decl_name)?;
+
+                if let Some((ty, temp)) = init_ty {
+                    for dim in ty.array_dimensions() {
+                        write!(buffer, "[{dim}]")?;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    // pub(crate) fn adjust_type_decl(
+    //     buffer: &mut impl Write,
+    //     decl_ty: &Type,
+    //     decl_name: &str,
+    //     decl_arrays: &[ArrayDimension],
+    // ) -> Result<()> {
+    //     Ok(())
+    // }
 }

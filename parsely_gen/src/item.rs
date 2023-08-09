@@ -50,6 +50,9 @@ impl Module {
                 }
             }
             TopLevelItem::Function(func) => {
+                self.symbol_table
+                    .insert(&func.ident.value, func.return_type.as_ref().into());
+
                 self.symbol_table.push_scope();
 
                 if func.export.is_some() {
@@ -74,6 +77,9 @@ impl Module {
                 println!("{:#?}", scp);
             }
             TopLevelItem::ExternalFunction(func) => {
+                self.symbol_table
+                    .insert(&func.ident.value, func.return_type.as_ref().into());
+
                 if func.export.is_some() {
                     self.gen_external_function_signature(buffers.header, func)?;
                 } else {
@@ -127,19 +133,33 @@ impl Module {
         Ok(())
     }
 
+    /// * If paramater has array brackets `[]`, it is converted into `struct slice`
+    /// * If paramater is char [], it is converted into `struct str`
     fn gen_function_params<'p, B: Write>(
         &mut self,
         buffer: &mut B,
         mut params: impl Iterator<Item = &'p Parameter>,
     ) -> Result<()> {
         if let Some(item) = params.next() {
-            self.gen_type(buffer, &item.parameter_type)?;
-            writeln!(buffer, "{}", item.ident.value)?;
+            self.adjust_type_decl_init(
+                buffer,
+                &item.parameter_type,
+                item.ident.value.as_str(),
+                &item.arrays,
+                None,
+            )?;
+            // writeln!(buffer, "{}", item.ident.value)?;
         }
 
         for item in params {
-            self.gen_type(buffer, &item.parameter_type)?;
-            writeln!(buffer, ", {}", item.ident.value)?;
+            writeln!(buffer, ", ")?;
+            self.adjust_type_decl_init(
+                buffer,
+                &item.parameter_type,
+                item.ident.value.as_str(),
+                &item.arrays,
+                None,
+            )?;
         }
 
         Ok(())

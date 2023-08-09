@@ -1,6 +1,6 @@
 use parsely_lexer::tokens::{self, Group, GroupBracket, Token};
 
-use crate::{Brackets, Parse, ParseError, ParseStream, Punctuation, Result};
+use crate::{Brackets, Parens, Parse, ParseError, ParseStream, Punctuation, Result};
 
 #[derive(Debug, Clone)]
 pub enum Literal {
@@ -85,10 +85,11 @@ pub enum Expression {
     Literal(Literal),
     Ident(tokens::Ident),
     ArrayInit(ArrayInit),
-    Parens(crate::Parens<Expression>),
+    Parens(Parens<Expression>),
     BinOp(BinOp),
     Index(Index),
     Slice(Slice),
+    Call(Call),
 }
 
 impl Expression {
@@ -132,29 +133,12 @@ impl BinOp {
 
         while stream.has_next() {
             let op = stream.peek()?;
-            let prec = BinOp::precedence(&op);
 
-            if prec < last_prec || prec == 0 {
-                break;
-            }
-
-            let op = stream.next();
-
-            let right = BinOp::parse_binop(stream, prec)?;
-
-            left = Expression::BinOp(BinOp {
-                left: Box::new(left),
-                op,
-                right: Box::new(right),
-            });
-        }
-
-        while stream.has_next() {
-            match stream.peek() {
-                Ok(Token::Group(Group {
+            match op {
+                Token::Group(Group {
                     bracket: GroupBracket::Bracket,
                     ..
-                })) => {
+                }) => {
                     let ios = stream.parse_with(|stream| {
                         Brackets::parse_with(stream, |stream| match stream.peek()? {
                             tokens::Tok![enum ..] => Ok(IndexOrSlice::Slice(Range::parse(stream)?)),
@@ -192,11 +176,86 @@ impl BinOp {
                             })
                         }
                     }
-                }
 
-                _ => break,
+                    continue;
+                }
+                Token::Group(Group {
+                    bracket: GroupBracket::Paren,
+                    ..
+                }) => {
+                    left = Expression::Call(Call {
+                        expr: Box::new(left),
+                        args: stream.parse()?,
+                    });
+                }
+                _ => (),
             }
+
+            let prec = BinOp::precedence(&op);
+
+            if prec < last_prec || prec == 0 {
+                break;
+            }
+
+            let op = stream.next();
+
+            let right = BinOp::parse_binop(stream, prec)?;
+
+            left = Expression::BinOp(BinOp {
+                left: Box::new(left),
+                op,
+                right: Box::new(right),
+            });
         }
+
+        // while stream.has_next() {
+        //     match stream.peek() {
+        //         Ok(Token::Group(Group {
+        //             bracket: GroupBracket::Bracket,
+        //             ..
+        //         })) => {
+        //             let ios = stream.parse_with(|stream| {
+        //                 Brackets::parse_with(stream, |stream| match stream.peek()? {
+        //                     tokens::Tok![enum ..] => Ok(IndexOrSlice::Slice(Range::parse(stream)?)),
+        //                     _ => {
+        //                         let left = stream.parse()?;
+        //                         match stream.peek() {
+        //                             Ok(tokens::Tok![enum ..]) => Ok(IndexOrSlice::Slice(Range {
+        //                                 left: Some(Box::new(left)),
+        //                                 token: stream.parse()?,
+        //                                 right: stream.parse()?,
+        //                             })),
+        //                             _ => Ok(IndexOrSlice::Index(Box::new(left))),
+        //                         }
+        //                     }
+        //                 })
+        //             })?;
+
+        //             match *ios.value {
+        //                 IndexOrSlice::Index(value) => {
+        //                     left = Expression::Index(Index {
+        //                         expr: Box::new(left),
+        //                         index: Brackets {
+        //                             parens: ios.parens,
+        //                             value,
+        //                         },
+        //                     })
+        //                 }
+        //                 IndexOrSlice::Slice(s) => {
+        //                     left = Expression::Slice(Slice {
+        //                         expr: Box::new(left),
+        //                         range: Brackets {
+        //                             parens: ios.parens,
+        //                             value: Box::new(s),
+        //                         },
+        //                     })
+        //                 }
+        //             }
+        //         }
+
+        //         _ => break,
+        //     }
+        // }
 
         Ok(left)
     }
@@ -290,6 +349,12 @@ impl Parse for Range {
             right: stream.parse()?,
         })
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct Call {
+    pub expr: Box<Expression>,
+    pub args: Parens<Punctuation<Expression, tokens::Tok![,]>>,
 }
 
 #[cfg(test)]

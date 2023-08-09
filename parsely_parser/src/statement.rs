@@ -8,6 +8,7 @@ pub enum Statement {
     VariableDeclaration(VariableDeclaration),
     IfStatement(IfStatement),
     WhileLoop(WhileLoop),
+    ReturnStatement(ReturnStatement),
 }
 
 impl Parse for Statement {
@@ -18,6 +19,7 @@ impl Parse for Statement {
             }
             (tokens::Tok![enum if], _) => stream.parse().map(Statement::IfStatement),
             (tokens::Tok![enum while], _) => stream.parse().map(Statement::WhileLoop),
+            (tokens::Tok![enum return], _) => stream.parse().map(Statement::ReturnStatement),
             _ => stream.parse().map(Statement::Expression),
         }
     }
@@ -135,6 +137,23 @@ impl Parse for WhileLoop {
             token: stream.parse()?,
             condition: stream.parse()?,
             body: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ReturnStatement {
+    pub token: tokens::Tok![return],
+    pub expr: Box<Expression>,
+    pub semi: tokens::Tok![;],
+}
+
+impl Parse for ReturnStatement {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(ReturnStatement {
+            token: stream.parse()?,
+            expr: stream.parse()?,
+            semi: stream.parse()?,
         })
     }
 }

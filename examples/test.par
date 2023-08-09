@@ -1,7 +1,10 @@
 
-int32 main() {
-    int32 i[][] = [[1, 2, 3, 4], [2, 3, 4, 5], [3, 4, 5, 6], [4, 5, 6, 7]];
-    int32 ii[] = i[2];
+int32 get_number(int32 i[]) {
+    return i;
+}
 
-    int32 ival[] = ii[1];
+int32 main() {
+    int32 arr[] = [1, 2, 3, 4];
+    get_number(arr[..]);
+    int32 c = 5;
 }

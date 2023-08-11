@@ -1,151 +1,111 @@
-use parsely_lexer::tokens::{self};
+use parsely_lexer::tokens::{self, GroupBracket, Token};
 
-use crate::{statement::{Statement, ArrayDimension}, types::Type, Braces, Parens, Parse, Punctuation};
+use crate::{expression::Expression, Braces, Parens, Parse, Punctuation};
 
 #[derive(Debug, Clone)]
-pub enum TopLevelItem {
-    Function(Function),
-    ExternalFunction(ExternalFunction),
-    Struct(Struct),
+pub struct Argument {
+    pub key: tokens::Ident,
+    pub value: Option<(tokens::Tok![:], Box<Expression>)>,
 }
 
-impl Parse for TopLevelItem {
+impl Parse for Argument {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        match stream.peek()? {
-            tokens::Tok![enum export] => match stream.peekn(1)? {
-                tokens::Tok![enum opaque]
-                | tokens::Tok![enum packed]
-                | tokens::Tok![enum struct] => stream.parse().map(TopLevelItem::Struct),
-                tokens::Tok![enum external] => stream.parse().map(TopLevelItem::ExternalFunction),
-                _ => stream.parse().map(TopLevelItem::Function),
-            },
-            tokens::Tok![enum opaque] | tokens::Tok![enum packed] | tokens::Tok![enum struct] => {
-                stream.parse().map(TopLevelItem::Struct)
-            }
-            tokens::Tok![enum external] => stream.parse().map(TopLevelItem::ExternalFunction),
-            _ => stream.parse().map(TopLevelItem::Function),
+        let key = stream.parse()?;
+
+        let value = if let Ok(tokens::Tok![enum :]) = stream.peek() {
+            Some((stream.parse()?, stream.parse()?))
+        } else {
+            None
+        };
+
+        Ok(Argument { key, value })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Arguments(Parens<Punctuation<Argument, tokens::Tok![,]>>);
+
+impl Parse for Arguments {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        stream.parse().map(Arguments)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ElementChild {
+    pub child: Option<Box<Expression>>,
+    pub semi: tokens::Tok![;],
+}
+
+impl Parse for ElementChild {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        if let Ok(tokens::Tok![enum ; as semi]) = stream.peek() {
+            Ok(ElementChild {
+                child: None,
+                semi: stream.next_ref(semi),
+            })
+        } else {
+            Ok(ElementChild {
+                child: stream.parse()?,
+                semi: stream.parse()?,
+            })
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Struct {
-    pub export: Option<tokens::Tok![export]>,
-    pub opaque: Option<tokens::Tok![opaque]>,
-    pub packed: Option<tokens::Tok![packed]>,
-    pub keyword: tokens::Tok![struct],
-    pub ident: tokens::Ident,
-    pub body: Braces<Punctuation<Parameter, tokens::Tok![;]>>,
+pub enum ElementBody {
+    Children(Braces<Item>),
+    Child(ElementChild),
 }
 
-impl Parse for Struct {
+impl Parse for ElementBody {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(Struct {
-            export: stream.parse()?,
-            opaque: stream.parse()?,
-            packed: stream.parse()?,
-            keyword: stream.parse()?,
-            ident: stream.parse()?,
-            body: Braces::parse_with(stream, Punctuation::parse_terminated)?,
-        })
+        if let Ok(Token::Group(tokens::Group {
+            bracket: GroupBracket::Brace,
+            ..
+        })) = stream.peek()
+        {
+            stream.parse().map(ElementBody::Children)
+        } else {
+            stream.parse().map(ElementBody::Child)
+        }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Parameter {
-    pub parameter_type: Box<Type>,
-    pub ident: tokens::Ident,
-    pub arrays: Vec<ArrayDimension>,
+pub struct Element {
+    pub tag: tokens::Ident,
+    pub args: Option<Arguments>,
+    pub body: ElementBody,
 }
 
-impl Parse for Parameter {
+impl Parse for Element {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(Parameter {
-            parameter_type: stream.parse()?,
-            ident: stream.parse()?,
-            arrays: stream.parse()?,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Function {
-    pub export: Option<tokens::Tok![export]>,
-    pub external: Option<tokens::Tok![external]>,
-    pub return_type: Box<Type>,
-    pub ident: tokens::Ident,
-    pub params: Parens<Punctuation<Parameter, tokens::Tok![,]>>,
-    pub body: Braces<Vec<Statement>>,
-}
-
-impl Parse for Function {
-    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(Function {
-            export: stream.parse()?,
-            external: stream.parse()?,
-            return_type: stream.parse()?,
-            ident: stream.parse()?,
-            params: stream.parse()?,
+        Ok(Element {
+            tag: stream.parse()?,
+            args: stream.parse()?,
             body: stream.parse()?,
         })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ExternalFunction {
-    pub export: Option<tokens::Tok![export]>,
-    pub external: tokens::Tok![external],
-    pub return_type: Box<Type>,
-    pub ident: tokens::Ident,
-    pub params: Parens<Punctuation<Parameter, tokens::Tok![,]>>,
-    pub semi: tokens::Tok![;],
+pub enum Item {
+    Element(Element),
+    Expression(Box<Expression>),
 }
 
-impl Parse for ExternalFunction {
+impl Parse for Item {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(ExternalFunction {
-            export: stream.parse()?,
-            external: stream.parse()?,
-            return_type: stream.parse()?,
-            ident: stream.parse()?,
-            params: stream.parse()?,
-            semi: stream.parse()?,
-        })
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Program {
-    pub items: Vec<TopLevelItem>,
-}
-
-impl Parse for Program {
-    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(Program {
-            items: stream.parse()?,
-        })
+        match stream.peek()? {
+            Token::Ident(_) => {
+                stream.parse().map(Item::Element)
+            }
+            _ => stream.parse().map(Item::Element),
+        }
     }
 }
 
 #[cfg(test)]
-mod test {
-    use parsely_lexer::Lexer;
-
-    use crate::ParseStream;
-
-    use super::*;
-
-    #[test]
-    fn test_basic() {
-        let input = r"
-export struct data {
-    int32 d;
-}
-";
-        let tokens = Lexer::run(input.as_bytes());
-        let stream = ParseStream::from(&tokens);
-
-        let tli: TopLevelItem = stream.parse().unwrap();
-        println!("{:#?}", tli);
-    }
-}
+mod test {}

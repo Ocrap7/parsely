@@ -4,9 +4,10 @@ use parsely_lexer::tokens::Token;
 
 pub mod expression;
 pub mod item;
-pub mod statement;
+pub mod program;
+// pub mod statement;
 mod tokens;
-pub mod types;
+// pub mod types;
 
 /// Represents an error while parsing
 #[derive(Debug)]
@@ -72,6 +73,19 @@ impl ParseStream<'_> {
         f(self)
     }
 
+    /// Trys to parse `T` but if it fails, the token index is restored incase parsing T consumed tokens
+    pub fn try_parse<T: Parse>(&self) -> Result<T> {
+        let index = self.index.get();
+
+        match T::parse(self) {
+            Ok(t) => Ok(t),
+            Err(e) => {
+                self.index.set(index);
+                Err(e)
+            }
+        }
+    }
+
     pub fn has_next(&self) -> bool {
         self.index.get() < self.buffer.len()
     }
@@ -88,6 +102,11 @@ impl ParseStream<'_> {
         self.buffer
             .get(self.index.get() + n)
             .ok_or(ParseError::UnexpectedEnd {})
+    }
+
+    /// Returns true if peeked token is eof
+    pub fn peek_eof(&self) -> bool {
+        matches!(self.peek(), Ok(Token::Eof(_)))
     }
 
     /// Increment the current token without returning it
@@ -134,7 +153,7 @@ where
     T: Parse,
 {
     fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
-        Ok(stream.parse().ok())
+        Ok(stream.try_parse().ok())
     }
 }
 
@@ -153,7 +172,7 @@ where
 {
     fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
         let mut items = Vec::new();
-        while stream.has_next() {
+        while stream.has_next() && !stream.peek_eof() {
             items.push(stream.parse()?)
         }
         Ok(items)
@@ -393,7 +412,7 @@ where
     fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
         let mut items = Vec::new();
         let mut last = None;
-        
+
         while stream.has_next() {
             let item = stream.parse()?;
 
@@ -427,5 +446,4 @@ where
 }
 
 #[cfg(test)]
-mod test {
-}
+mod test {}

@@ -1,22 +1,10 @@
 use std::fmt::Display;
 
 use colored::Colorize;
-use module::Module;
-use parsely_lexer::{
-    tokens,
-    AsSpan, Span,
-};
-use parsely_parser::{
-    item::{Program, TokenCache}
-};
+use parsely_lexer::{tokens, AsSpan, Span};
+use parsely_parser::program::Program;
 
-pub mod module;
-
-mod expression;
-mod item;
-mod llvm_value;
-mod symbols;
-mod types;
+use crate::{module::Module, Result, TokenCache};
 
 /// Severity of diagnostic
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
@@ -30,6 +18,8 @@ pub enum DiagnosticLevel {
 /// A diagnostic produced by code generation
 #[derive(Debug, Clone)]
 pub enum Diagnostic {
+    /// Error when formatting to buffer
+    FormatError(std::fmt::Error),
     /// The provided symbol was not found in the symbol table
     SymbolNotFound(tokens::Ident),
     /// The type doesn't match the context
@@ -45,6 +35,7 @@ pub enum Diagnostic {
 impl Diagnostic {
     pub fn level(&self) -> DiagnosticLevel {
         match self {
+            Diagnostic::FormatError(_) => DiagnosticLevel::Error,
             Diagnostic::SymbolNotFound(_) => DiagnosticLevel::Error,
             Diagnostic::IncompatibleType(_) => DiagnosticLevel::Error,
             Diagnostic::IncompatibleTypes(_, _) => DiagnosticLevel::Error,
@@ -55,6 +46,7 @@ impl Diagnostic {
 
     pub fn primary_span(&self) -> Span {
         match self {
+            Diagnostic::FormatError(_) => Span::EMPTY,
             Diagnostic::SymbolNotFound(ident) => ident.as_span(),
             Diagnostic::IncompatibleType(span) => *span,
             Diagnostic::IncompatibleTypes(span, _) => *span,
@@ -68,7 +60,7 @@ impl Diagnostic {
     /// `cache` is token and line information cache
     pub fn format(
         &self,
-        _module: &Module<'_>,
+        _module: &Module,
         program: &Program,
         cache: &mut TokenCache,
         f: &mut std::fmt::Formatter<'_>,
@@ -86,6 +78,9 @@ impl Diagnostic {
         write!(f, "{}", ": ".bold())?;
 
         let pad = match self {
+            Diagnostic::FormatError(e) => {
+                return writeln!(f, "Error when formatting into buffer: {e}");
+            }
             Diagnostic::SymbolNotFound(ident) => {
                 write!(
                     f,
@@ -100,7 +95,11 @@ impl Diagnostic {
                 ty.end.line.to_string().len()
             }
             Diagnostic::IncompatibleTypes(left, right) => {
-                write!(f, "{}", "Types don't match in expression".to_string().bold())?;
+                write!(
+                    f,
+                    "{}",
+                    "Types don't match in expression".to_string().bold()
+                )?;
                 left.end.line.max(right.end.line).to_string().len()
             }
             Diagnostic::Message(msg, span, _) => {
@@ -258,6 +257,12 @@ impl Display for Diagnostic {
     }
 }
 
+impl From<std::fmt::Error> for Diagnostic {
+    fn from(value: std::fmt::Error) -> Self {
+        Self::FormatError(value)
+    }
+}
+
 /// Helper struct for easy formatting
 ///
 /// # Example
@@ -266,9 +271,9 @@ impl Display for Diagnostic {
 /// let fmtr = DiagnosticFmt(&module.errors, &module, program);
 /// println!("{}", fmtr);
 /// ```    
-pub struct DiagnosticFmt<'a, 'ctx>(&'a [Diagnostic], &'a Module<'ctx>, &'a Program);
+pub struct DiagnosticFmt<'a>(pub &'a [Diagnostic], pub &'a Module, pub &'a Program);
 
-impl Display for DiagnosticFmt<'_, '_> {
+impl Display for DiagnosticFmt<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut cache = TokenCache::new(self.2);
         for diag in self.0 {
@@ -279,9 +284,6 @@ impl Display for DiagnosticFmt<'_, '_> {
 }
 
 impl std::error::Error for Diagnostic {}
-
-/// Code gen result
-type Result<T> = std::result::Result<T, Diagnostic>;
 
 trait ErrorHelper {
     fn caught(self) -> Self;
@@ -366,6 +368,3 @@ macro_rules! raise {
         error
     }};
 }
-
-#[cfg(test)]
-mod tests {}

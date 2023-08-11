@@ -76,7 +76,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": ["build",  "examples/test.par"],
             "cwd": "${workspaceFolder}"
         },
         {

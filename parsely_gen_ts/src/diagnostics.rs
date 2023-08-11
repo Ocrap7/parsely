@@ -58,7 +58,60 @@ impl Diagnostic {
     /// Format a diagnostic into 'f'
     /// `module` and `program` should be for the same file
     /// `cache` is token and line information cache
-    pub fn format(
+    pub fn format(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // How many characters on each side of the diagnostic's span should be displayed
+        const LINE_PEEK: usize = 3;
+
+        match self.level() {
+            DiagnosticLevel::Internal => return Ok(()),
+            DiagnosticLevel::Info => write!(f, "{}", "info".bold().cyan()),
+            DiagnosticLevel::Warning => write!(f, "{}", "warning".bold().yellow()),
+            DiagnosticLevel::Error => write!(f, "{}", "error".bold().red()),
+        }?;
+
+        write!(f, "{}", ": ".bold())?;
+
+        let pad = match self {
+            Diagnostic::FormatError(e) => {
+                return writeln!(f, "Error when formatting into buffer: {e}");
+            }
+            Diagnostic::SymbolNotFound(ident) => {
+                write!(
+                    f,
+                    "{}",
+                    format!("Symbol `{}` not found in scope", ident.value).bold(),
+                )?;
+
+                ident.as_span().end.line.to_string().len()
+            }
+            Diagnostic::IncompatibleType(ty) => {
+                write!(f, "{}", "Unexpected type".to_string().bold())?;
+                ty.end.line.to_string().len()
+            }
+            Diagnostic::IncompatibleTypes(left, right) => {
+                write!(
+                    f,
+                    "{}",
+                    "Types don't match in expression".to_string().bold()
+                )?;
+                left.end.line.max(right.end.line).to_string().len()
+            }
+            Diagnostic::Message(msg, span, _) => {
+                write!(f, "{}", msg.bold())?;
+                span.end.line.to_string().len()
+            }
+            Diagnostic::Caught(_) => 0,
+        };
+
+        writeln!(f)?;
+
+        Ok(())
+    }
+
+    /// Format a diagnostic into 'f'
+    /// `module` and `program` should be for the same file
+    /// `cache` is token and line information cache
+    pub fn format_module(
         &self,
         _module: &Module,
         program: &Program,
@@ -264,20 +317,40 @@ impl From<std::fmt::Error> for Diagnostic {
 }
 
 /// Helper struct for easy formatting
+/// This is specific to a module
 ///
 /// # Example
 ///
 /// ```
-/// let fmtr = DiagnosticFmt(&module.errors, &module, program);
+/// let fmtr = DiagnosticModuleFmt(&module.errors, &module, program);
 /// println!("{}", fmtr);
 /// ```    
-pub struct DiagnosticFmt<'a>(pub &'a [Diagnostic], pub &'a Module, pub &'a Program);
+pub struct DiagnosticModuleFmt<'a>(pub &'a [Diagnostic], pub &'a Module, pub &'a Program);
 
-impl Display for DiagnosticFmt<'_> {
+impl Display for DiagnosticModuleFmt<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut cache = TokenCache::new(self.2);
         for diag in self.0 {
-            diag.format(self.1, self.2, &mut cache, f)?;
+            diag.format_module(self.1, self.2, &mut cache, f)?;
+        }
+        Ok(())
+    }
+}
+
+/// Helper struct for easy formatting
+///
+/// # Example
+///
+/// ```
+/// let fmtr = DiagnosticFmt(&module.errors);
+/// println!("{}", fmtr);
+/// ```    
+pub struct DiagnosticFmt<'a>(pub &'a [Diagnostic]);
+
+impl Display for DiagnosticFmt<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for diag in self.0 {
+            diag.format(f)?;
         }
         Ok(())
     }

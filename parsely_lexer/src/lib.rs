@@ -391,7 +391,6 @@ impl Lexer {
     fn next(&mut self, group: Option<GroupBracket>) -> Option<Option<Token>> {
         let Some(char) = self.chars.get(self.index) else {
             let mut pos = self.make_position();
-            println!("{pos:?}");
             pos.column -= 1;
 
             return Some(Some(Token::Eof(pos.join(pos))));

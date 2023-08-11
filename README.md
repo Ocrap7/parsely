@@ -2,6 +2,22 @@
 
 HMTL is a modern way to write hypermedia applications that aims to replace the legacy HTML
 
+### Usage
+Compile a file into output directory dist:
+```bash
+hmtlc build src/view.par -o dist
+```
+
+Compile multiple files:
+```bash
+hmtlc build src/view.par src/another_view.par # output directory is `dist` by default
+```
+
+Compile directory:
+```bash
+hmtlc build src # compiles all files and sub directories in `src`
+```
+
 ### Typescript Backend
 
 Compile this:

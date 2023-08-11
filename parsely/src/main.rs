@@ -1,31 +1,150 @@
 use std::{
     fs::File,
-    io::{Read, Write},
-    path::PathBuf,
-    str::FromStr,
+    io::{self, Read, Write},
+    path::{Path, PathBuf},
 };
 
-use parsely_gen_ts::module::Module;
-use parsely_lexer::Lexer;
-use parsely_parser::{program::Program, ParseStream};
+use clap::Parser;
+use parsely_gen_ts::{
+    diagnostics::{DiagnosticFmt, DiagnosticModuleFmt},
+    module::Module,
+};
+use parsely_lexer::{Lexer, Span};
+use parsely_parser::program::Program;
+
+mod args;
+
+const EXTENSION: &str = "par";
 
 fn main() {
-    let path = PathBuf::from_str("examples/test.par").unwrap();
+    let args = args::Args::parse();
 
-    let mut file = File::open(&path).unwrap();
+    match args.command {
+        args::Commands::Build { sources, output } => {
+            if let Err(e) = std::fs::create_dir_all(&output) {
+                print_error(format!(
+                    "Unable to open or create output directory `{}`: {e}",
+                    output.display()
+                ));
+            }
+
+            compile_files(&sources, &output, &output);
+        }
+    }
+}
+
+fn print_error(str: String) {
+    let diags = &[parsely_gen_ts::diagnostics::Diagnostic::Message(
+        str,
+        Span::EMPTY,
+        parsely_gen_ts::diagnostics::DiagnosticLevel::Error,
+    )];
+    let fmt = DiagnosticFmt(diags);
+    println!("{fmt}");
+}
+
+fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
+    for file in sources {
+        if file.is_dir() {
+            let files = match std::fs::read_dir(file) {
+                Ok(files) => files,
+                Err(e) => {
+                    print_error(format!(
+                        "Error reading directory listing `{}`: {e}",
+                        file.display()
+                    ));
+                    continue;
+                }
+            };
+
+            let sources = files
+                .filter_map(|source_file| {
+                    let source = match source_file {
+                        Ok(file) => file,
+                        Err(e) => {
+                            print_error(format!(
+                                "error reading directory listing `{}`: {e}",
+                                file.display()
+                            ));
+                            return None;
+                        }
+                    };
+
+                    Some(source.path())
+                })
+                .collect::<Vec<_>>();
+
+            let output_file_dir = base.join(file);
+            if let Err(e) = std::fs::create_dir_all(&output_file_dir) {
+                print_error(format!(
+                    "Unable to open or create output directory `{}`: {e}",
+                    output.as_ref().display()
+                ));
+            }
+
+            compile_files(&sources, base, output_file_dir);
+            continue;
+        } else if !file.is_file() {
+            print_error(format!("Input path `{}` is not a file", file.display()));
+            continue;
+        }
+
+        if file
+            .extension()
+            .map(|file| file != EXTENSION)
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        let Some(filename) = file.file_name() else {
+            print_error(format!("Input path `{}` is not a file", file.display()));
+            continue;
+        };
+
+        let output = output.as_ref().join(filename).with_extension("ts");
+        match compile_file(&file, output) {
+            Ok((module, program)) => {
+                let fmt = DiagnosticModuleFmt(module.diagnostics(), &module, &program);
+                print!("{fmt}");
+            }
+            Err(e) => {
+                match e.kind() {
+                    io::ErrorKind::NotFound => {
+                        print_error(format!("File `{}` not found", file.display()))
+                    }
+                    _ => print_error(format!("IO error when compiling file: {e}")),
+                };
+            }
+        }
+    }
+}
+
+fn compile_file(
+    input: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+) -> io::Result<(Module, Program)> {
+    let mut file = File::open(&input)?;
 
     let mut buffer = String::with_capacity(256);
-    file.read_to_string(&mut buffer).unwrap();
+    file.read_to_string(&mut buffer)?;
 
     let tokens = Lexer::run(buffer.as_bytes());
-    println!("{:#?}", tokens);
-
-    let program = Program::new(&path, buffer, tokens).parse().unwrap();
-    println!("{:#?}", program);
+    let program = Program::new(&input, buffer, tokens).parse().unwrap();
 
     let module = Module::run_new(
-        path.file_stem().unwrap().to_string_lossy().as_ref(),
+        input
+            .as_ref()
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .as_ref(),
         &program,
     )
     .unwrap();
+
+    let mut output_file = File::create(&output)?;
+    output_file.write_all(module.buffer.as_bytes())?;
+
+    Ok((module, program))
 }

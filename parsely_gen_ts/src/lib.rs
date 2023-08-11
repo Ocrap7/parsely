@@ -4,10 +4,10 @@ use diagnostics::Diagnostic;
 use parsely_lexer::{tokens::Token, AsSpan, Position, Range};
 use parsely_parser::program::Program;
 
-mod diagnostics;
 mod item;
 mod expression;
 
+pub mod diagnostics;
 pub mod module;
 
 /// Code gen result

@@ -294,6 +294,8 @@ impl Lexer {
             ['t', 'r', 'u', 'e'] => Some(Bool::from_value(true, slice, self.make_position())),
             /* false */
             ['f', 'a', 'l', 's', 'e'] => Some(Bool::from_value(false, slice, self.make_position())),
+
+            ['i', 'n', 'p', 'u', 't'] => Some(tokens::Input::from_span_start(self.make_position())),
             c => Some(Ident::from_span_start(c, self.make_position())),
         };
 
@@ -321,6 +323,56 @@ impl Lexer {
                 self.column += slice.len() + 1;
 
                 Some(Token::String(String {
+                    value: slice.iter().collect(),
+                    span: open.join(close),
+                }))
+            }
+            _ => None,
+        }
+    }
+
+    fn try_template(&mut self) -> Option<Token> {
+        let open = self.make_position();
+        self.index += 1;
+        self.column += 1;
+
+        let char = *self.chars.get(self.index)?;
+
+        match char {
+            '{' => {
+                self.index += 1;
+                self.column += 1;
+
+                let mut acc = 0;
+                let start = self.index;
+
+                loop {
+                    match self.chars.get(self.index) {
+                        Some('{') => acc += 1,
+                        Some('}') if acc == 0 => break,
+                        Some('}') => acc -= 1,
+                        Some('\n') => {
+                            self.index += 1;
+                            self.column = 0;
+                            self.line += 1;
+
+                            continue;
+                        }
+                        None => return None,
+                        _ => (),
+                    }
+
+                    self.index += 1;
+                    self.column += 1;
+                }
+
+                let slice = self.chars.get(start..self.index)?;
+
+                self.index += 1;
+                self.column += 1;
+                let close = self.make_position();
+
+                Some(Token::Template(Template {
                     value: slice.iter().collect(),
                     span: open.join(close),
                 }))
@@ -413,9 +465,11 @@ impl Lexer {
             // Keywords and identifiers
             ('a'..='z' | '0'..='9', _, _) => return Some(self.try_keyword_or_ident()),
             ('"' | '\'', _, _) => return Some(self.try_string()),
+            ('$', Some('{'), _) => return Some(self.try_template()),
 
             // Punctuation
             (';', _, _) => Some(Semi::from_span_start(self.make_position())),
+            ('?', _, _) => Some(Question::from_span_start(self.make_position())),
             (':', _, _) => Some(Colon::from_span_start(self.make_position())),
             (',', _, _) => Some(Comma::from_span_start(self.make_position())),
             ('#', _, _) => Some(Pound::from_span_start(self.make_position())),

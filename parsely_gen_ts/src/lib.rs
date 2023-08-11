@@ -6,6 +6,8 @@ use parsely_parser::program::Program;
 
 mod diagnostics;
 mod item;
+mod expression;
+
 pub mod module;
 
 /// Code gen result

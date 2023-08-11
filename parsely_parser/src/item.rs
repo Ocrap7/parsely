@@ -1,4 +1,4 @@
-use parsely_lexer::tokens::{self, GroupBracket, Token};
+use parsely_lexer::tokens::{self, Comma, GroupBracket, Token};
 
 use crate::{expression::Expression, Braces, Parens, Parse, Punctuation};
 
@@ -23,7 +23,7 @@ impl Parse for Argument {
 }
 
 #[derive(Debug, Clone)]
-pub struct Arguments(Parens<Punctuation<Argument, tokens::Tok![,]>>);
+pub struct Arguments(pub Parens<Punctuation<Argument, tokens::Tok![,]>>);
 
 impl Parse for Arguments {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
@@ -55,7 +55,7 @@ impl Parse for ElementChild {
 
 #[derive(Debug, Clone)]
 pub enum ElementBody {
-    Children(Braces<Item>),
+    Children(Braces<Vec<Item>>),
     Child(ElementChild),
 }
 
@@ -91,18 +91,52 @@ impl Parse for Element {
 }
 
 #[derive(Debug, Clone)]
+pub struct Input {
+    pub ident: tokens::Ident,
+    pub opt: Option<tokens::Tok![?]>,
+    pub colon: tokens::Tok![:],
+    pub template: tokens::Template,
+}
+
+impl Parse for Input {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(Input {
+            ident: stream.parse()?,
+            opt: stream.parse()?,
+            colon: stream.parse()?,
+            template: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Inputs {
+    pub input_tok: tokens::Input,
+    pub inputs: Braces<Punctuation<Input, Comma>>,
+}
+
+impl Parse for Inputs {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(Inputs {
+            input_tok: stream.parse()?,
+            inputs: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Item {
     Element(Element),
     Expression(Box<Expression>),
+    Inputs(Inputs),
 }
 
 impl Parse for Item {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
-            Token::Ident(_) => {
-                stream.parse().map(Item::Element)
-            }
-            _ => stream.parse().map(Item::Element),
+            Token::Ident(_) => stream.parse().map(Item::Element),
+            tokens::Tok![enum input] => stream.parse().map(Item::Inputs),
+            _ => stream.parse().map(Item::Expression),
         }
     }
 }

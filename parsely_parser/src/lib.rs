@@ -5,9 +5,9 @@ use parsely_lexer::tokens::Token;
 pub mod expression;
 pub mod item;
 pub mod program;
+// pub mod types;
 // pub mod statement;
 mod tokens;
-// pub mod types;
 
 /// Represents an error while parsing
 #[derive(Debug)]

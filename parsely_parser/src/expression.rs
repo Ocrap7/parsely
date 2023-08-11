@@ -85,6 +85,7 @@ pub enum Expression {
     Literal(Literal),
     Ident(tokens::Ident),
     ArrayInit(ArrayInit),
+    Template(tokens::Template),
 }
 
 impl Parse for Expression {
@@ -95,6 +96,7 @@ impl Parse for Expression {
                 ..
             }) => stream.parse().map(|array| Expression::ArrayInit(array)),
             Token::Ident(ident) => Ok(Expression::Ident(stream.next_ref(ident))),
+            Token::Template(t) => Ok(Expression::Template(stream.next_ref(t))),
             _ => stream.parse().map(|tok| Expression::Literal(tok)),
         }
     }

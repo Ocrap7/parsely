@@ -51,6 +51,7 @@ macro_rules! define_tokens {
             String(String),
             Char(Char),
             Group(Group),
+            Template(Template),
             Eof($crate::Span),
            $(
                 $struct_name($struct_name)
@@ -66,6 +67,7 @@ macro_rules! define_tokens {
                     $token_enum::Bool(i) => i.span.len(),
                     $token_enum::String(i) => i.span.len(),
                     $token_enum::Char(i) => i.span.len(),
+                    $token_enum::Template(i) => i.span.len(),
                     $token_enum::Group(_) => 0,
                     $token_enum::Eof(_) => 0,
                     $(
@@ -98,6 +100,7 @@ macro_rules! define_tokens {
                     $token_enum::String(i) => i.as_span(),
                     $token_enum::Char(i) => i.as_span(),
                     $token_enum::Group(i) => i.as_span(),
+                    $token_enum::Template(i) => i.as_span(),
                     $token_enum::Eof(i) => *i,
                     $(
                         $token_enum::$struct_name(i) => i.as_span(),
@@ -116,6 +119,7 @@ macro_rules! define_tokens {
                     $token_enum::String(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Char(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Group(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::Template(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Eof(_) => write!(f, "EOF"),
                     $(
                         $token_enum::$struct_name(tok) => std::fmt::Display::fmt(tok, f)
@@ -370,11 +374,49 @@ impl crate::AsSpan for Char {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Template {
+    pub value: std::string::String,
+    pub(crate) span: crate::Span,
+}
+
+impl Template {
+    pub const NAME: &str = "Template";
+
+    pub fn from_span_start(raw: &str, start: crate::Position) -> Token {
+        Token::Template(Template {
+            value: raw[2..raw.len() - 1].to_string(),
+            span: crate::Span {
+                end: crate::Position {
+                    line: start.line,
+                    column: start.column + raw.len(),
+                },
+                start,
+            },
+        })
+    }
+}
+
+impl Display for Template {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "${{{}}}'", self.value)
+    }
+}
+
+impl crate::AsSpan for Template {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
+}
+
 define_tokens! {
     Tok;
     pub enum Token {
+        Input = input,
+
         // Punctuation
         Semi = ;,
+        Question = ?,
         Colon = :,
         Comma = ,,
         Pound = #,

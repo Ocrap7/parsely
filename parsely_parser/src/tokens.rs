@@ -21,8 +21,12 @@ macro_rules! impl_token_parse {
 }
 
 impl_token_parse! {
+    Input,
+    Template,
+
     // Punctuation
     Semi,
+    Question,
     Colon,
     Comma,
     Pound,

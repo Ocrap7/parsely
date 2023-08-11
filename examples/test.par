@@ -5,6 +5,7 @@ type Tuple = [int32, bool, float]
 type Ptr = @int32
 type MutPtr #int32
 type Optional = int32?
+type Result = int32!ErrorType
 
 type Struct = {
     d: int
@@ -18,10 +19,124 @@ type UnionNamed =
 | value: int32 
 | reference: @int32
 
-type BackedUnionNamed = u8
+type BackedUnionNamed = uint8
 | value: int32 
 | reference: @int32
 
-let func = (T: type): type => {
+let generic = (T: type) where T: Numeric => {}
 
+// T is a tuple where the first element implements Numeric and the second implements Iterator
+let generic2 = (T: type) where T: [:Numeric, :Iterator] => {}
+// generic2([2, [1, 2, 3, 4]])
+
+// T is a tuple where the first element implements iterator and the rest implement Numeric
+let generic3 = (T: type) where T: [:Iterator, ...:Numeric] => {}
+// generic3([[1, 2, 3, 4], 1, 2, 3, 4])
+
+// T is an array where each element implements Numeric
+let generic4 = (T: type) where T: [:Numeric] => {}
+// generic4([1, 2, 3, 4])
+
+// Comptime
+// functions that return a type must be comptime
+// all parameters must be comptime
+
+let ntuple = comptime (T: type, number: int): type => [T: value]
+
+let func = comptime (T: type): type => {
+    match T.size
+        | 8 => int8
+        | 16 => int16
+        | 32 => int32
+        | 64 => int64
+        | _ => int
 }
+
+let generic1 = comptime (T: type) => type {
+    for type in T {
+        yield [type, type]
+    }
+}
+
+// generic1([int, bool float]) // => [[int, int], [bool, bool], [float, float]]
+
+// Iterators and generators
+
+//foreach
+for value in iterator {
+    
+}
+
+//map
+for value in iterator {
+    yield value + 1
+}
+
+//filter
+for value in iterator {
+    yield value
+}
+
+//filter map
+for value in iterator {
+    if value > 0 {
+        yield value
+    }
+}
+
+//find
+for value in iterator {
+    if value == 5 {
+        resolve value
+    }
+}
+
+//find index
+for [i, value] in iterator {
+    if value == 5 {
+        resolve i
+    }
+}
+
+//find map 
+for value in iterator {
+    if value == 5 {
+        resolve value * 2
+    }
+}
+
+// Pattern match
+
+// Slice
+let arr = [1, 2, 3, 4]
+
+match arr
+| [first, ...last] => 1
+| [...first, last] => 1
+| [first, ...middle, last] => 1
+| [one] => 1 
+| [] => 0
+
+match i 
+| 1, 2 => 2
+| 3, 4 => 4
+| _ => 0
+
+type data = { data: [uint8] }
+
+let iter = (self: #data): some Iterator => self.data.iter()
+
+
+// Optionals and results
+let value: int32? = none // none value
+value = 56
+let ivalue = value! // assert value is none otherwise resolve block to none
+let val = value ? 0 // default is 0 if value is none
+
+type Error = 
+| some_err
+
+let result = int32!Error = Error.some_err
+let iresult = result! //assert value is non error otherwise resolve block to none
+let val = result ? 0 // default is 0 if value is error
+

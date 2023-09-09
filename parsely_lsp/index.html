@@ -1,0 +1,303 @@
+<html>
+    <head>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.css" integrity="sha512-uf06llspW44/LZpHzHT6qBOIVODjWtv4MxCricRxkzvopAlSWnTf6hpZTFxuuZcuNE9CBQhqE0Seu1CoRk84nQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/theme/material-darker.min.css" integrity="sha512-2OhXH4Il3n2tHKwLLSDPhrkgnLBC+6lHGGQzSFi3chgVB6DJ/v6+nbx+XYO9CugQyHVF/8D/0k3Hx1eaUK2K9g==" crossorigin="anonymous" referrerpolicy="no-referrer" />    
+        
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/keymap/vim.min.js" integrity="sha512-CRScbOTlIJVds3U03uRuDwsYvvq3qFtW5rR7bdlWMzyaKASpibWkS4qhUwE0mfNIpwRurtR3V7bKMLPTtjXusw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.js" integrity="sha512-8RnEqURPUc5aqFEN04aQEiPlSAdE0jlFS/9iGgUyNtwFnSKCXhmB6ZTNl7LnDtDWKabJIASzXrzD0K+LYexU9g==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/htmlembedded/htmlembedded.min.js" integrity="sha512-nZlYJlXg6ZqhEdMELUCY9QpeUZHLZh9JUUe2wnHmEvFSWer2gxmDO4xeQ4QlRM1zMzeZsTdm5oFw2IGhsmmLlA==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/htmlmixed/htmlmixed.min.js" integrity="sha512-HN6cn6mIWeFJFwRN9yetDAMSh+AK9myHF1X9GlSlKmThaat65342Yw8wL7ITuaJnPioG0SYG09gy0qd5+s777w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/javascript/javascript.min.js" integrity="sha512-I6CdJdruzGtvDyvdO4YsiAq+pkWf2efgd1ZUSK2FnM/u2VuRASPC7GowWQrWyjxCZn6CT89s3ddGI+be0Ak9Fg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+        
+        <script type="module">
+            import TSasm from 'https://cdn.jsdelivr.net/npm/assemblyscript@0.27.9/+esm'
+        </script> 
+        
+        <script src="index.js"></script>
+        
+        <style>
+            * {
+                box-sizing: border-box;
+
+                color:#dcdcdc;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                font-weight: normal;
+            }
+
+            html {
+                --background-color: #333;
+                --foreground-color: #444;
+                --rounding: 25px;
+                --io-gap: 8px;
+            
+                background-color: var(--background-color);
+                padding: 0;
+                margin: 0;
+            }
+            
+            body {
+                background-color: var(--background-color);
+                padding: 0;
+                margin: 0;
+            }
+
+            input {
+                background-color: #333333;
+                outline: none;
+                border: none;
+
+                width: 80%;
+                float: right;
+                padding: 4px;
+
+                border-radius: var(--rounding);
+            }
+
+            
+            /* width */
+            ::-webkit-scrollbar {
+                width: 10px;
+                height: 10px;
+            }
+            
+            /* Track */
+            ::-webkit-scrollbar-track {
+                background: transparent; 
+            }
+            
+            /* Handle */
+            ::-webkit-scrollbar-thumb {
+                background: #888;
+                border-radius: var(--rounding);
+            }
+            
+            /* Handle on hover */
+            ::-webkit-scrollbar-thumb:hover {
+                background: #555; 
+            } 
+            
+            .CodeMirror {
+                width: 100%;
+                height: 100%;
+                font-size: 1rem;
+            }
+            
+            .CodeMirror-scrollbar-filler {
+                display: none!important;
+            }
+            
+            #container {
+                height: 100%;
+                width: 100%;
+                
+                display: flex;
+            }
+            
+            /* #io-container {
+                display: flex;
+                flex-direction: column;
+            
+                width: 50%;
+                flex-grow: 1;
+                gap: var(--io-gap);
+                padding: var(--io-gap);
+            } */
+
+            #side-panel-container {
+                /* width: 50%; */
+                flex-grow: 1;
+                padding: var(--io-gap);
+                padding-left: 0;
+            }
+
+            #side-panel {
+                background-color: var(--foreground-color);
+                border-radius: var(--rounding);
+            
+                width: 100%;
+                height: 100%;
+            
+                overflow: hidden;
+                padding: 10px;
+            }
+            
+            #editor-container {
+                display: flex;
+                flex-direction: column;
+
+                width: 80%;
+                padding: var(--io-gap);
+                gap: var(--io-gap);
+
+                align-items: stretch;
+            }
+            
+            #editor {
+                background-color: var(--foreground-color);
+                border-radius: var(--rounding);
+            
+                width: 100%;
+                height: 100%;
+            
+                overflow: hidden;
+
+                position: relative;
+
+                /* flex: auto; */
+            }
+
+            #controls {
+                background-color: var(--foreground-color);
+                border-radius: var(--rounding);
+            
+                width: 100%;
+                height: 20%;
+
+                padding: 10px;
+
+                display: flex;
+
+                flex-direction: column;
+
+                justify-content: space-between;
+                align-items: start;
+                /* flex: auto; */
+
+                /* flex-grow: 2; */
+            }
+/*             
+            #input-container, #output-container {
+                flex: 1 1 0;
+            }
+            
+            #input-container div, #output-container div {
+                background-color: var(--foreground-color);
+                border-radius: var(--rounding);
+            
+                width: 100%;
+                height: 100%;
+            } */
+
+            #output-controls {
+                position: absolute;
+
+                z-index: 5;
+
+                right: 10px;
+                bottom: 10px;
+            }
+
+            button {
+                border-radius: var(--rounding);
+
+                background-color: #555;
+                border: solid 1px #444;
+            }
+
+            h3 {
+                color:#dcdcdc;
+                font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+                font-weight: normal;
+                margin: 0;
+            }
+
+
+            #control-nav {
+                display: flex;
+                border-radius: var(--rounding);
+
+            }
+
+            #control-nav div:first-child {
+                border-top-left-radius: var(--rounding);
+                border-bottom-left-radius: var(--rounding);
+            }
+
+            #control-nav div:last-child {
+                border-top-right-radius: var(--rounding);
+                border-bottom-right-radius: var(--rounding);
+            }
+
+            #control-nav div {
+                background-color: #333;
+                border-right: solid 1px #222;
+                padding: 4px 8px;
+            }
+
+            #control-nav div:last-child {
+                border: none;
+            }
+
+            #control-nav div[selected] {
+                background-color: #555;
+            }
+
+            #generate-words {
+                font-size: 1.2em;
+                /* float: bottom; */
+            }
+
+        </style>
+        
+        <script>
+            let code
+            window.addEventListener('load', () => {
+                code = CodeMirror(document.getElementById("editor"), {
+                    mode: "javascript",
+                    theme: 'material-darker',
+                    lineNumbers: true,
+                    styleActiveLine: true,
+                    matchBrackets: true,
+                    value: "Egg, Bag, Sag, Saddle, Paddle, Potato, Caps, Bink, Chaps, Optil",
+//                    keyMap: 'vim',
+                }) 
+            })
+        </script>
+    </head>
+    
+    <body>
+        <div id="container">
+            <!-- <div id="io-container">
+                <div id="input-container">
+                    <div></div>
+                </div>
+                <div id="output-container">
+                    <div></div>
+                </div>
+            </div>  -->
+            <div id="editor-container">
+                <div id="editor">
+                    <div id="output-controls">
+                        <button>Copy Output</button>
+                    </div>
+                </div> 
+                <div id="controls">
+                    <div id="control-nav">
+                        <div id="generate-tab" selected>Generate</div>
+                        <div id="train-new-tab">Train Model</div>
+                        <div id="generate-tab">Merge Models</div>
+                        <div id="generate-tab">Conform Word</div>
+                    </div>
+
+                    <button id="generate-words">Generate Words</button>
+                </div>
+            </div> 
+            <div id="side-panel-container">
+                <div id="side-panel">
+                    <h3>Parameters</h3>
+
+                    <table>
+                        <tr>
+                            <td>Model</td>
+                            <td><input type="text" value="English"></td>
+                        </tr>
+                        <tr>
+                            <td>Number</td>
+                            <td><input type="number" value="15"></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div> 
+    </body>
+</html>

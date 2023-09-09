@@ -45,16 +45,54 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in library 'parsely-gen'",
+            "name": "Debug unit tests in library 'parsely-parser-failsafe'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--lib",
-                    "--package=parsely-gen"
+                    "--package=parsely-parser-failsafe"
                 ],
                 "filter": {
-                    "name": "parsely-gen",
+                    "name": "parsely-parser-failsafe",
+                    "kind": "lib"
+                }
+            },
+            "args": ["--nocapture"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'parsely-diagnostics'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=parsely-diagnostics"
+                ],
+                "filter": {
+                    "name": "parsely-diagnostics",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'parsely-gen-asm'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=parsely-gen-asm"
+                ],
+                "filter": {
+                    "name": "parsely-gen-asm",
                     "kind": "lib"
                 }
             },
@@ -76,7 +114,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["build",  "examples/test.par"],
+            "args": [],
             "cwd": "${workspaceFolder}"
         },
         {
@@ -92,6 +130,43 @@
                 ],
                 "filter": {
                     "name": "parsely",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'parsely-lsp'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=parsely-lsp",
+                    "--package=parsely-lsp"
+                ],
+                "filter": {
+                    "name": "parsely-lsp",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'parsely-lsp'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=parsely-lsp",
+                    "--package=parsely-lsp"
+                ],
+                "filter": {
+                    "name": "parsely-lsp",
                     "kind": "bin"
                 }
             },

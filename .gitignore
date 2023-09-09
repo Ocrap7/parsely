@@ -1,3 +1,4 @@
 /target
 /dist
 parsely_gen_old
+/parsely_lsp/client/out

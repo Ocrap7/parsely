@@ -1,18 +1,15 @@
-input {
-    value: ${number}
-}
+#![isa = "armv8"]
 
-html {
-    head {
-        title 'This title';
-    }
+/// hello
+/// ```par
+/// let x = 23;
+/// add reg:rd = reg:rs0 + reg:rs1
+/// ```
+let THIS_IS_CONST = 23;
 
-    body {
-        a (href: '/route') {
-            ${
-                5
-            }
-            'Goto route'
-        }
-    }
-}
+/// fdsjlkf
+let function = 
+    add x0 = x1 + x2,
+    adds w0 = x1 + x2 + THIS_IS_CONST,
+    sub x1 = x29 + x2
+;

@@ -1,26 +1,18 @@
 use std::collections::HashMap;
 
-use diagnostics::Diagnostic;
 use parsely_lexer::{tokens::Token, AsSpan, Position, Range};
-use parsely_parser::program::Program;
+// use parsely_parser::program::Program;
 
-mod item;
-mod expression;
+use crate::Program;
 
-pub mod diagnostics;
-pub mod module;
-
-/// Code gen result
-type Result<T> = std::result::Result<T, Diagnostic>;
-
-pub struct TokenCache<'a> {
-    program: &'a Program,
+pub struct TokenCache<'a, P: Program> {
+    program: &'a P,
     pub(crate) positions: HashMap<Position, usize>,
     pub(crate) lines: HashMap<usize, Range>,
 }
 
-impl<'a> TokenCache<'a> {
-    pub fn new(program: &'a Program) -> TokenCache<'a> {
+impl<'a, P: Program> TokenCache<'a, P> {
+    pub fn new(program: &'a P) -> TokenCache<'a, P> {
         TokenCache {
             program,
             positions: HashMap::default(),
@@ -35,7 +27,7 @@ impl<'a> TokenCache<'a> {
             let token_range = self.line_index(position.line);
             let start_index = token_range.0.start;
 
-            let tokens = self.program.tokens(token_range);
+            let tokens = self.program.tokens_in_range(token_range);
 
             let token_index = tokens.iter().enumerate().position(|(i, tok)| {
                 self.positions.insert(tok.as_span().start, start_index + i);
@@ -53,13 +45,15 @@ impl<'a> TokenCache<'a> {
         } else {
             let line_token_index = self
                 .program
-                .tokens
-                .binary_search_by_key(&line, |tok| tok.as_span().start.line)
+                .tokens()
+                .iter()
+                .position(|tok| tok.as_span().start.line == line)
+                // .binary_search_by_key(&line, |tok| tok.as_span().start.line)
                 .expect("Unable to find token with specified line number");
 
             let start_index = self
                 .program
-                .tokens
+                .tokens()
                 .iter()
                 .take(line_token_index)
                 .rev()
@@ -67,7 +61,7 @@ impl<'a> TokenCache<'a> {
                 .unwrap_or(0);
             let start_index = line_token_index - start_index;
 
-            let tokens = &self.program.tokens[start_index..];
+            let tokens = &self.program.tokens()[start_index..];
             let end_index = tokens
                 .iter()
                 .position(|tok| {

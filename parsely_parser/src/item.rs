@@ -1,145 +1,183 @@
-use parsely_lexer::tokens::{self, Comma, GroupBracket, Token};
+use parsely_lexer::tokens::{self};
 
-use crate::{expression::Expression, Braces, Parens, Parse, Punctuation};
-
-#[derive(Debug, Clone)]
-pub struct Argument {
-    pub key: tokens::Ident,
-    pub value: Option<(tokens::Tok![:], Box<Expression>)>,
-}
-
-impl Parse for Argument {
-    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        let key = stream.parse()?;
-
-        let value = if let Ok(tokens::Tok![enum :]) = stream.peek() {
-            Some((stream.parse()?, stream.parse()?))
-        } else {
-            None
-        };
-
-        Ok(Argument { key, value })
-    }
-}
+use crate::{expression::Expression, Brackets, Parse, Punctuation};
 
 #[derive(Debug, Clone)]
-pub struct Arguments(pub Parens<Punctuation<Argument, tokens::Tok![,]>>);
+pub struct Arguments {
+    pub values: Punctuation<tokens::Ident, tokens::Token>,
+}
 
 impl Parse for Arguments {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        stream.parse().map(Arguments)
+        Ok(Arguments {
+            values: stream.parse()?,
+        })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct ElementChild {
-    pub child: Option<Box<Expression>>,
-    pub semi: tokens::Tok![;],
+pub struct Op {
+    pub op: tokens::Ident,
+    pub args: Expression,
 }
 
-impl Parse for ElementChild {
+impl Parse for Op {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        if let Ok(tokens::Tok![enum ; as semi]) = stream.peek() {
-            Ok(ElementChild {
-                child: None,
-                semi: stream.next_ref(semi),
-            })
-        } else {
-            Ok(ElementChild {
-                child: stream.parse()?,
-                semi: stream.parse()?,
-            })
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ElementBody {
-    Children(Braces<Vec<Item>>),
-    Child(ElementChild),
-}
-
-impl Parse for ElementBody {
-    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        if let Ok(Token::Group(tokens::Group {
-            bracket: GroupBracket::Brace,
-            ..
-        })) = stream.peek()
-        {
-            stream.parse().map(ElementBody::Children)
-        } else {
-            stream.parse().map(ElementBody::Child)
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Element {
-    pub tag: tokens::Ident,
-    pub args: Option<Arguments>,
-    pub body: ElementBody,
-}
-
-impl Parse for Element {
-    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(Element {
-            tag: stream.parse()?,
+        Ok(Op {
+            op: stream.parse()?,
             args: stream.parse()?,
-            body: stream.parse()?,
         })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Input {
+pub struct OpList {
+    pub list: Punctuation<Op, tokens::Comma>,
+}
+
+impl Parse for OpList {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        Ok(OpList {
+            list: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum BoundValue {
+    Expression(Expression),
+    OpList(OpList),
+}
+
+impl Parse for BoundValue {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        let expr = stream.try_parse_with::<Expression>(|stream| {
+            let expr = stream.parse();
+            if let (Ok(expr), Ok(tokens::Tok![enum ;])) = (expr, stream.peek()) {
+                Ok(expr)
+            } else {
+                Err(crate::ParseError::UnexpectedEnd {})
+            }
+        });
+
+        if let Ok(expr) = expr {
+            Ok(BoundValue::Expression(expr))
+        } else {
+            stream.parse().map(BoundValue::OpList)
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Binding {
+    pub let_tok: tokens::Tok![let],
     pub ident: tokens::Ident,
-    pub opt: Option<tokens::Tok![?]>,
-    pub colon: tokens::Tok![:],
-    pub template: tokens::Template,
+    pub eq_tok: tokens::Tok![=],
+    pub value: BoundValue,
+    pub semi_tok: tokens::Tok![;],
 }
 
-impl Parse for Input {
+impl Parse for Binding {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(Input {
+        Ok(Binding {
+            let_tok: stream.parse()?,
             ident: stream.parse()?,
-            opt: stream.parse()?,
-            colon: stream.parse()?,
-            template: stream.parse()?,
+            eq_tok: {
+                let val = stream.parse()?;
+                stream.ignore_nl();
+                val
+            },
+            value: stream.parse()?,
+            semi_tok: {
+                stream.ignore_nl();
+                stream.parse()?
+            },
         })
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct Inputs {
-    pub input_tok: tokens::Input,
-    pub inputs: Braces<Punctuation<Input, Comma>>,
+pub struct Attribute {
+    pub shebang_tok: tokens::Shebang,
+    pub value: Brackets<Expression>,
 }
 
-impl Parse for Inputs {
+impl Parse for Attribute {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
-        Ok(Inputs {
-            input_tok: stream.parse()?,
-            inputs: stream.parse()?,
+        Ok(Attribute {
+            shebang_tok: stream.parse()?,
+            value: stream.parse()?,
         })
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum Item {
-    Element(Element),
-    Expression(Box<Expression>),
-    Inputs(Inputs),
+    Attribute(Attribute),
+    Binding(Binding),
 }
 
 impl Parse for Item {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
+        stream.ignore_nl();
         match stream.peek()? {
-            Token::Ident(_) => stream.parse().map(Item::Element),
-            tokens::Tok![enum input] => stream.parse().map(Item::Inputs),
-            _ => stream.parse().map(Item::Expression),
+            tokens::Tok![enum let] => stream.parse().map(Item::Binding),
+            tok => Err(crate::ParseError::UnexpectedToken {
+                found: tok.clone(),
+                expected: "item".into(),
+            }),
         }
     }
 }
 
 #[cfg(test)]
-mod test {}
+mod test {
+    use parsely_lexer::{
+        span,
+        tokens::{Bracket, Ident, Token},
+        Lexer,
+    };
+
+    use crate::ParseStream;
+
+    use super::*;
+
+    fn lx(st: &str) -> Vec<Token> {
+        Lexer::run(st)
+    }
+
+    fn prs<T: Parse>(st: &str) -> T {
+        let toks = lx(st);
+        println!("toks: {toks:#?}");
+        let ps = ParseStream::from(&toks);
+
+        T::parse(&ps).unwrap()
+    }
+
+    #[test]
+    fn test_attribute() {
+        let attr = prs::<Attribute>("#![tok]");
+
+        println!("{:#?}", attr);
+        // assert_eq!(
+        //     attr,
+        //     Attribute {
+        //         shebang_tok: tokens::Shebang(span!(0:0-2)),
+        //         value: Brackets {
+        //             parens: Bracket { span: span!(0:2-7) },
+        //             value: Expression::Ident(Ident {
+        //                 value: "tok".into(),
+        //                 span: span!(0:3-6),
+        //             })
+        //         }
+        //     }
+        // );
+    }
+
+    #[test]
+    fn test_binding() {
+        let binding = prs::<Binding>("let c = add x0 = x0 + x1;");
+
+        println!("{:#?}", binding);
+    }
+}

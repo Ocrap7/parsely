@@ -1,5 +1,5 @@
 [package]
-name = "parsely-parser"
+name = "parsely-parserp"
 version = "0.1.0"
 edition = "2021"
 

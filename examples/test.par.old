@@ -1,0 +1,26 @@
+#![isa = "armv8"]
+
+let CONSTANT = 45;
+
+let function = 
+    add x0 = x1 + x1 + CONSTANT, // ADD x0, x1, x1, #45
+    adds x4 = x8 - x2 + CONSTANT, // ADDS x0, x1, x1, #45
+
+    mov w0 = w1 // MOV w1, w0
+    movs w2 = w0 // MOVS w0, w2
+
+    cmp flags = w3 - w4 // CMP w3, w4
+
+    mul x0 = w2 * w6
+    madd x1 = w2 * w6 + CONSTANT
+    mneg x2 = -w3 * w3
+
+    asr x7 = x8 >> 4
+
+    csinc x0 = x1 if flags ~ 0 else x0++ // CSINC x0, x1, x0, NE
+    cinc x0++ if flags ~ <= // CINC x0, x0, LS
+    cinc x0 = x1 + 1 if flags ~ = // CINC x0, x1, EQ
+
+    br function
+;
+

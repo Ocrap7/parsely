@@ -3,7 +3,7 @@ use std::fmt::Display;
 macro_rules! define_tokens {
     ($tok_macro:ident; $vis:vis enum $token_enum:ident { $($struct_name:ident = $st:tt),*, $(,)* }) => {
         $(
-            #[derive(Debug, Clone, PartialEq, Eq)]
+            #[derive(Debug, Clone, Copy, PartialEq, Eq)]
             $vis struct $struct_name(pub $crate::Span);
 
             impl $struct_name {
@@ -29,6 +29,18 @@ macro_rules! define_tokens {
                 }
             }
 
+            impl AsRef<str> for $struct_name {
+                fn as_ref(&self) -> &str {
+                    stringify!($st)
+                }
+            }
+
+            impl Into<$token_enum> for $struct_name {
+                fn into(self)  -> $token_enum {
+                    $token_enum::$struct_name(self)
+                }
+            }
+
             impl std::fmt::Display for $struct_name {
                 fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
                     write!(f, "{}", stringify!($st))
@@ -42,6 +54,44 @@ macro_rules! define_tokens {
             }
         )*
 
+            #[derive(Debug, Clone, PartialEq, Eq)]
+            $vis struct Shebang(pub $crate::Span);
+
+            impl Shebang {
+                pub const EMPTY: Self = Self($crate::Span::EMPTY);
+                pub const NAME: &str = "#!";
+
+                pub fn from_span_start(start: $crate::Position) -> $token_enum {
+                    $token_enum::Shebang(Self($crate::Span {
+                        end: $crate::Position {
+                            line: start.line,
+                            column: start.column + Self::len(),
+                        },
+                        start,
+                    }))
+                }
+
+                pub fn len() -> usize {
+                    2
+                }
+
+                pub fn as_str() -> &'static str {
+                    "#!"
+                }
+            }
+
+            impl std::fmt::Display for Shebang {
+                fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                    write!(f, "#!")
+                }
+            }
+
+            impl $crate::AsSpan for Shebang {
+                fn as_span(&self) -> $crate::Span {
+                    self.0
+                }
+            }
+
         #[derive(Debug, Clone, PartialEq)]
         $vis enum $token_enum {
             Ident(Ident),
@@ -52,6 +102,9 @@ macro_rules! define_tokens {
             Char(Char),
             Group(Group),
             Template(Template),
+            Shebang(Shebang),
+            Newline(Newline),
+            DocComment(DocComment),
             Eof($crate::Span),
            $(
                 $struct_name($struct_name)
@@ -68,8 +121,11 @@ macro_rules! define_tokens {
                     $token_enum::String(i) => i.span.len(),
                     $token_enum::Char(i) => i.span.len(),
                     $token_enum::Template(i) => i.span.len(),
+                    $token_enum::Newline(i) => i.span.len(),
+                    $token_enum::DocComment(i) => i.span.len(),
                     $token_enum::Group(_) => 0,
                     $token_enum::Eof(_) => 0,
+                    $token_enum::Shebang(_) => Shebang::len(),
                     $(
                         $token_enum::$struct_name(_) => $struct_name::len()
                     ),*
@@ -101,6 +157,9 @@ macro_rules! define_tokens {
                     $token_enum::Char(i) => i.as_span(),
                     $token_enum::Group(i) => i.as_span(),
                     $token_enum::Template(i) => i.as_span(),
+                    $token_enum::Shebang(i) => i.as_span(),
+                    $token_enum::Newline(i) => i.as_span(),
+                    $token_enum::DocComment(i) => i.as_span(),
                     $token_enum::Eof(i) => *i,
                     $(
                         $token_enum::$struct_name(i) => i.as_span(),
@@ -120,6 +179,9 @@ macro_rules! define_tokens {
                     $token_enum::Char(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Group(i) => std::fmt::Display::fmt(i, f),
                     $token_enum::Template(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::Shebang(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::DocComment(i) => std::fmt::Display::fmt(i, f),
+                    $token_enum::Newline(_) => write!(f, "NL"),
                     $token_enum::Eof(_) => write!(f, "EOF"),
                     $(
                         $token_enum::$struct_name(tok) => std::fmt::Display::fmt(tok, f)
@@ -143,10 +205,49 @@ macro_rules! define_tokens {
     };
 }
 
+impl PartialEq<Token> for Comma {
+    fn eq(&self, other: &Token) -> bool {
+        match other {
+            Token::Comma(_) => true,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq<Token> for Semi {
+    fn eq(&self, other: &Token) -> bool {
+        match other {
+            Token::Semi(_) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Newline {
+    pub span: crate::Span,
+}
+
+impl Newline {
+    pub const NAME: &str = "Newline";
+}
+
+impl Display for Newline {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", Newline::NAME)
+    }
+}
+
+impl crate::AsSpan for Newline {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ident {
     pub value: std::string::String,
-    pub(crate) span: crate::Span,
+    pub span: crate::Span,
 }
 
 impl Ident {
@@ -178,10 +279,16 @@ impl crate::AsSpan for Ident {
     }
 }
 
+impl Into<Token> for Ident {
+    fn into(self) -> Token {
+        Token::Ident(self)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Int {
     pub value: u64,
-    pub(crate) span: crate::Span,
+    pub span: crate::Span,
 }
 
 impl Int {
@@ -217,10 +324,16 @@ impl crate::AsSpan for Int {
     }
 }
 
+impl Into<Token> for Int {
+    fn into(self) -> Token {
+        Token::Int(self)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Float {
     pub value: f64,
-    pub(crate) span: crate::Span,
+    pub span: crate::Span,
 }
 
 impl Float {
@@ -256,10 +369,16 @@ impl crate::AsSpan for Float {
     }
 }
 
+impl Into<Token> for Float {
+    fn into(self) -> Token {
+        Token::Float(self)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bool {
     pub value: bool,
-    pub(crate) span: crate::Span,
+    pub span: crate::Span,
 }
 
 impl Bool {
@@ -304,10 +423,16 @@ impl crate::AsSpan for Bool {
     }
 }
 
+impl Into<Token> for Bool {
+    fn into(self) -> Token {
+        Token::Bool(self)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct String {
     pub value: std::string::String,
-    pub(crate) span: crate::Span,
+    pub span: crate::Span,
 }
 
 impl String {
@@ -339,10 +464,16 @@ impl crate::AsSpan for String {
     }
 }
 
+impl Into<Token> for String {
+    fn into(self) -> Token {
+        Token::String(self)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Char {
     pub value: char,
-    pub(crate) span: crate::Span,
+    pub span: crate::Span,
 }
 
 impl Char {
@@ -374,10 +505,16 @@ impl crate::AsSpan for Char {
     }
 }
 
+impl Into<Token> for Char {
+    fn into(self) -> Token {
+        Token::Char(self)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Template {
     pub value: std::string::String,
-    pub(crate) span: crate::Span,
+    pub span: crate::Span,
 }
 
 impl Template {
@@ -409,10 +546,29 @@ impl crate::AsSpan for Template {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct DocComment {
+    pub span: Span,
+    pub value_span: Span,
+    pub value: std::string::String,
+}
+
+impl Display for DocComment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "/// {}'", self.value)
+    }
+}
+
+impl crate::AsSpan for DocComment {
+    fn as_span(&self) -> crate::Span {
+        self.span
+    }
+}
+
 define_tokens! {
     Tok;
     pub enum Token {
-        Input = input,
+        Let = let,
 
         // Punctuation
         Semi = ;,
@@ -420,10 +576,51 @@ define_tokens! {
         Colon = :,
         Comma = ,,
         Pound = #,
+
+        // Operators
+        And = &,
+        AndEq = &=,
+        Assign = =,
+        Eq = ==,
+        Dot = .,
+        Gt = >,
+        GtEq = >=,
+        LeftShift = <<,
+        LeftShiftEq = <<=,
+        LogicalAnd = &&,
+        LogicalOr = ||,
+        Lt = <,
+        LtEq = <=,
+        Minus = -,
+        MinusEq = -=,
+        Not = !,
+        NotEq = !=,
+        Or = |,
+        OrEq = |=,
+        Plus = +,
+        PlusEq = +=,
+        Rem = %,
+        RemEq = %=,
+        RightShift = >>,
+        RightShiftEq = >>=,
+        Slash = /,
+        SlashEq = /=,
+        Star = *,
+        StarEq = *=,
+        Xor = ^,
+        XorEq = ^=,
+    }
+}
+
+impl Token {
+    pub fn matches(&self, other: &Token) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
     }
 }
 
 pub use Tok;
+
+use crate::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Group {
@@ -472,7 +669,7 @@ impl Display for Group {
 
 impl crate::AsSpan for Group {
     fn as_span(&self) -> crate::Span {
-        self.close.join(self.open)
+        self.open.join(self.close)
     }
 }
 

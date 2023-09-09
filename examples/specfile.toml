@@ -1,0 +1,14 @@
+[registers]
+x0-x28 = { description="General purpose register", size = 64 }
+x29 = { description="Frame pointer", size = 64 }
+x30 = { description="Procedure link register", size = 64 }
+
+w0-w28 = { subset = "x0-x28", size = 32 }
+w29 = { subset = "x29", size = 32 }
+w30 = { subset = "x30", size = 32 }
+
+[instructions]
+add = { input = ["reg:rd", "=", "reg:rs0", "+", "reg:rs1"], output = ["add", "rd", "rs0", "rs1"], doc = "Add `rs0` to `rs1` and store into `rd`." }
+adds = { input = ["reg:rd", "=", "reg:rs0", "+", "reg:rs1", "+", "imm:imm1"], output = ["add", "rd", "rs0", "rs1", "imm1"], doc = "" }
+
+sub = { input = ["reg:rd", "=", "reg:rs0", "+", "reg:rs1"], output = ["sub", "rd", "rs0", "rs1"], doc = "" }

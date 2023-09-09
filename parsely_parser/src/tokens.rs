@@ -21,7 +21,7 @@ macro_rules! impl_token_parse {
 }
 
 impl_token_parse! {
-    Input,
+    Let,
     Template,
 
     // Punctuation
@@ -30,6 +30,39 @@ impl_token_parse! {
     Colon,
     Comma,
     Pound,
+    Shebang,
+    And,
+    AndEq,
+    Assign,
+    Eq,
+    Dot,
+    Gt,
+    GtEq,
+    LeftShift,
+    LeftShiftEq,
+    LogicalAnd,
+    LogicalOr,
+    Lt,
+    LtEq,
+    Minus,
+    MinusEq,
+    Not,
+    NotEq,
+    Or,
+    OrEq,
+    Plus,
+    PlusEq,
+    Rem,
+    RemEq,
+    RightShift,
+    RightShiftEq,
+    Slash,
+    SlashEq,
+    Star,
+    StarEq,
+    Xor,
+    XorEq,
+
 
     Ident,
     Int,
@@ -37,6 +70,13 @@ impl_token_parse! {
     Bool,
     String,
     Char,
+    Newline,
+}
+
+impl Parse for Token {
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> Result<Self> {
+        Ok(stream.next())
+    }
 }
 
 pub trait ParseGrouped {

@@ -86,6 +86,21 @@ impl ParseStream<'_> {
         }
     }
 
+    pub fn try_parse_with<T: Parse>(
+        &self,
+        f: impl Fn(&'_ ParseStream<'_>) -> Result<T>,
+    ) -> Result<T> {
+        let index = self.index.get();
+
+        match self.parse_with(f) {
+            Ok(t) => Ok(t),
+            Err(e) => {
+                self.index.set(index);
+                Err(e)
+            }
+        }
+    }
+
     pub fn has_next(&self) -> bool {
         self.index.get() < self.buffer.len()
     }
@@ -107,6 +122,12 @@ impl ParseStream<'_> {
     /// Returns true if peeked token is eof
     pub fn peek_eof(&self) -> bool {
         matches!(self.peek(), Ok(Token::Eof(_)))
+    }
+
+    pub fn ignore_nl(&self) {
+        while let Ok(Token::Newline(_)) = self.peek() {
+            self.increment();
+        }
     }
 
     /// Increment the current token without returning it

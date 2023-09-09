@@ -2,13 +2,12 @@ use std::{
     fs::File,
     io::{self, Read, Write},
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use clap::Parser;
-use parsely_gen_ts::{
-    diagnostics::{DiagnosticFmt, DiagnosticModuleFmt},
-    module::Module,
-};
+use parsely_diagnostics::{Diagnostic, DiagnosticFmt, DiagnosticLevel, DiagnosticModuleFmt};
+use parsely_gen_asm::{module::Module, pack::Pack};
 use parsely_lexer::{Lexer, Span};
 use parsely_parser::program::Program;
 
@@ -34,16 +33,23 @@ fn main() {
 }
 
 fn print_error(str: String) {
-    let diags = &[parsely_gen_ts::diagnostics::Diagnostic::Message(
+    let diags = &[Diagnostic::Message(
         str,
         Span::EMPTY,
-        parsely_gen_ts::diagnostics::DiagnosticLevel::Error,
+        DiagnosticLevel::Error,
     )];
     let fmt = DiagnosticFmt(diags);
     println!("{fmt}");
 }
 
 fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
+    let mut pack = File::open("examples/specfile.toml").unwrap();
+
+    let mut pack_str = String::with_capacity(1024);
+    pack.read_to_string(&mut pack_str).unwrap();
+
+    let pack = Arc::new(parsely_gen_asm::toml::from_str::<Pack>(&pack_str).unwrap());
+
     for file in sources {
         if file.is_dir() {
             let files = match std::fs::read_dir(file) {
@@ -102,10 +108,10 @@ fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
             continue;
         };
 
-        let output = output.as_ref().join(filename).with_extension("ts");
-        match compile_file(&file, output) {
+        let output = output.as_ref().join(filename).with_extension("s");
+        match compile_file(&file, output, pack.clone()) {
             Ok((module, program)) => {
-                let fmt = DiagnosticModuleFmt(module.diagnostics(), &module, &program);
+                let fmt = DiagnosticModuleFmt(module.diagnostics(), &program);
                 print!("{fmt}");
             }
             Err(e) => {
@@ -123,6 +129,7 @@ fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
 fn compile_file(
     input: impl AsRef<Path>,
     output: impl AsRef<Path>,
+    pack: Arc<Pack>,
 ) -> io::Result<(Module, Program)> {
     let mut file = File::open(&input)?;
 
@@ -130,7 +137,10 @@ fn compile_file(
     file.read_to_string(&mut buffer)?;
 
     let tokens = Lexer::run(buffer.as_bytes());
-    let program = Program::new(&input, buffer, tokens).parse().unwrap();
+    println!("{tokens:#?}");
+    let (program, diagnostics) = Program::new(&input, buffer, tokens).parse().unwrap();
+
+    println!("{:#?}", pack);
 
     let module = Module::run_new(
         input
@@ -140,6 +150,8 @@ fn compile_file(
             .to_string_lossy()
             .as_ref(),
         &program,
+        pack,
+        diagnostics,
     )
     .unwrap();
 

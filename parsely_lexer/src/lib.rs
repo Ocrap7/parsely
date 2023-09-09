@@ -1,3 +1,8 @@
+use std::{
+    cmp::Ordering,
+    fmt::{Debug, Display},
+};
+
 use tokens::*;
 
 #[macro_use]
@@ -5,6 +10,30 @@ pub mod tokens;
 
 pub trait AsSpan {
     fn as_span(&self) -> Span;
+}
+
+pub trait SearchPosition<T>
+where
+    T: AsSpan,
+{
+    fn search_position(&self, position: &Position) -> Option<usize>;
+}
+
+impl<T: AsSpan + Debug> SearchPosition<T> for [T] {
+    fn search_position(&self, position: &Position) -> Option<usize> {
+        self.binary_search_by(|item| {
+            let span = item.as_span();
+
+            if position < &span.start {
+                Ordering::Greater
+            } else if position > &span.end {
+                Ordering::Less
+            } else {
+                Ordering::Equal
+            }
+        })
+        .ok()
+    }
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -22,6 +51,15 @@ pub struct Position {
 }
 
 impl Position {
+    pub const EMPTY: Position = Position { line: 0, column: 0 };
+
+    pub fn increment_column(self) -> Self {
+        Position {
+            line: self.line,
+            column: self.column + 1,
+        }
+    }
+
     pub fn to_span(self, len: usize) -> Span {
         Span {
             end: Position {
@@ -45,6 +83,95 @@ impl Position {
 pub struct Span {
     pub start: Position,
     pub end: Position,
+}
+
+impl Display for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}:{}-{}:{}",
+            self.start.line, self.start.column, self.end.line, self.end.column
+        )
+    }
+}
+
+impl Span {
+    pub const EMPTY: Span = Span {
+        start: Position { line: 0, column: 0 },
+        end: Position { line: 0, column: 0 },
+    };
+
+    pub fn new_dummy(position: Position) -> Span {
+        Span {
+            start: position,
+            end: position,
+        }
+    }
+
+    pub fn increment(self) -> Self {
+        Span {
+            start: Position {
+                line: self.start.line,
+                column: self.start.column + 1,
+            },
+            end: Position {
+                line: self.end.line,
+                column: self.end.column + 1,
+            },
+        }
+    }
+
+    /// Length of span on a single line
+    pub fn len(&self) -> usize {
+        self.end.column - self.start.column
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub fn is_dummy(&self) -> bool {
+        self.start == self.end
+    }
+
+    pub fn contains(&self, other: &Span) -> bool {
+        self.start <= other.start && self.end >= other.end
+    }
+
+    pub fn contains_position(&self, position: &Position) -> bool {
+        self.start <= *position && self.end >= *position
+    }
+
+    pub fn join_all<const N: usize>(spans: [Span; N]) -> Span {
+        assert_ne!(N, 0);
+        assert_ne!(N, 1);
+
+        let start_iter = spans.into_iter().skip_while(|span| span == &Span::EMPTY);
+
+        let mut rest = start_iter.take_while(|span| span != &Span::EMPTY);
+
+        let first = rest.next();
+        let last = rest.last().or_else(|| first);
+
+        first.unwrap().join(last.unwrap())
+    }
+
+    pub fn join_saturated(self, other: Span) -> Span {
+        if self == Span::EMPTY {
+            other
+        } else if other == Span::EMPTY {
+            self
+        } else {
+            self.join(other)
+        }
+    }
+
+    pub fn join(self, other: Span) -> Span {
+        Span {
+            start: self.start,
+            end: other.end,
+        }
+    }
 }
 
 impl Default for Span {
@@ -133,37 +260,6 @@ macro_rules! span {
             },
         }
     };
-}
-
-impl Span {
-    pub const EMPTY: Span = Span {
-        start: Position { line: 0, column: 0 },
-        end: Position { line: 0, column: 0 },
-    };
-
-    /// Length of span on a single line
-    pub fn len(&self) -> usize {
-        self.end.column - self.start.column
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn contains(&self, other: &Span) -> bool {
-        self.start <= other.start && self.end >= other.end
-    }
-
-    pub fn contains_position(&self, position: &Position) -> bool {
-        self.start <= *position && self.end >= *position
-    }
-
-    pub fn join(self, other: Span) -> Span {
-        Span {
-            start: self.start,
-            end: other.end,
-        }
-    }
 }
 
 /// Main lexing struct. This is an iterator
@@ -295,7 +391,7 @@ impl Lexer {
             /* false */
             ['f', 'a', 'l', 's', 'e'] => Some(Bool::from_value(false, slice, self.make_position())),
 
-            ['i', 'n', 'p', 'u', 't'] => Some(tokens::Input::from_span_start(self.make_position())),
+            ['l', 'e', 't'] => Some(tokens::Let::from_span_start(self.make_position())),
             c => Some(Ident::from_span_start(c, self.make_position())),
         };
 
@@ -305,22 +401,66 @@ impl Lexer {
         token
     }
 
+    fn try_numeric(&mut self) -> Option<Token> {
+        let Some(slice) = self.chars.get(self.index..) else {
+            let mut pos = self.make_position();
+            pos.column -= 2;
+
+            return Some(Token::Eof(pos.join(pos)));
+        };
+
+        let int_ind = slice
+            .iter()
+            .position(|c| !c.is_ascii_digit())
+            .unwrap_or(slice.len());
+
+        let float_ind = slice
+            .iter()
+            .position(|c| !c.is_ascii_digit())
+            .unwrap_or(slice.len());
+
+        let int_slice = &slice[..int_ind];
+        let float_slice = &slice[..float_ind];
+
+        if !int_slice.is_empty() {
+            let token = Some(Int::from_span_start(int_slice, self.make_position()));
+
+            self.index += int_slice.len();
+            self.column += int_slice.len();
+
+            return token;
+        }
+
+        if !float_slice.is_empty() {
+            let token = Some(Float::from_span_start(float_slice, self.make_position()));
+
+            self.index += float_slice.len();
+            self.column += float_slice.len();
+
+            return token;
+        }
+
+        None
+    }
+
     fn try_string(&mut self) -> Option<Token> {
         let char = *self.chars.get(self.index)?;
         match char {
             '"' | '\'' => {
                 let open = self.make_position();
                 self.index += 1;
+                self.column += 1;
 
                 let slice = self.chars.get(self.index..)?;
 
                 let ind = slice.iter().position(|c| *c == char).unwrap();
 
-                let close = self.make_position();
                 let slice = &slice[..ind];
 
                 self.index += slice.len() + 1;
                 self.column += slice.len() + 1;
+
+                let close = self.make_position();
 
                 Some(Token::String(String {
                     value: slice.iter().collect(),
@@ -380,6 +520,107 @@ impl Lexer {
             _ => None,
         }
     }
+
+    fn line_comment(&mut self) -> Option<Option<Token>> {
+        let chars = [self.chars.get(self.index)?, self.chars.get(self.index + 1)?];
+
+        match chars {
+            ['/', '/'] => {
+                self.index += 2;
+
+                while self.index < self.chars.len() {
+                    if let Some('\n') = self.chars.get(self.index) {
+                        break;
+                    }
+
+                    self.index += 1;
+                }
+
+                self.index += 1;
+                self.column = 0;
+                self.line += 1;
+
+                Some(None)
+            }
+            _ => None,
+        }
+    }
+
+    fn block_comment(&mut self) -> Option<Option<Token>> {
+        let chars = [self.chars.get(self.index)?, self.chars.get(self.index + 1)?];
+
+        match chars {
+            ['(', '*'] => {
+                self.index += 2;
+                self.column += 2;
+
+                while self.index < self.chars.len() {
+                    let chars = [self.chars.get(self.index)?, self.chars.get(self.index + 1)?];
+
+                    match chars {
+                        ['*', ')'] => {
+                            self.index += 2;
+                            self.column += 2;
+
+                            return Some(None);
+                        }
+                        _ => (),
+                    }
+
+                    self.index += 1;
+                    self.column += 1;
+                }
+
+                Some(None)
+            }
+            _ => None,
+        }
+    }
+
+    fn doc_comment(&mut self) -> Option<Option<Token>> {
+        let chars = [
+            self.chars.get(self.index)?,
+            self.chars.get(self.index + 1)?,
+            self.chars.get(self.index + 2)?,
+        ];
+
+        let start = self.make_position();
+
+        match chars {
+            ['/', '/', '/'] => {
+                self.index += 3;
+                self.column += 3;
+
+                let start_value_index = self.index;
+                let start_value = self.make_position();
+
+                while self.index < self.chars.len() {
+                    if let Some('\n') = self.chars.get(self.index) {
+                        break;
+                    }
+
+                    self.index += 1;
+                }
+
+                let end = self.make_position();
+                self.index += 1;
+
+                self.line += 1;
+                self.column = 0;
+
+                let slice = &self.chars[start_value_index..self.index];
+
+                let token = DocComment {
+                    span: start.join(end),
+                    value_span: start_value.join(end),
+                    value: slice.iter().collect::<std::string::String>().trim().to_string(),
+                };
+
+                Some(Some(Token::DocComment(token)))
+            }
+            _ => None,
+        }
+    }
 }
 
 impl Lexer {
@@ -391,7 +632,7 @@ impl Lexer {
     fn next(&mut self, group: Option<GroupBracket>) -> Option<Option<Token>> {
         let Some(char) = self.chars.get(self.index) else {
             let mut pos = self.make_position();
-            pos.column -= 1;
+            // pos.column -= 1;
 
             return Some(Some(Token::Eof(pos.join(pos))));
         };
@@ -462,30 +703,93 @@ impl Lexer {
 
         let token = match (char, char_1, char_2) {
             // Keywords and identifiers
-            ('a'..='z' | '0'..='9', _, _) => return Some(self.try_keyword_or_ident()),
+            ('a'..='z' | 'A'..='Z', _, _) => return Some(self.try_keyword_or_ident()),
+            ('0'..='9', _, _) => return Some(self.try_numeric()),
             ('"' | '\'', _, _) => return Some(self.try_string()),
-            ('$', Some('{'), _) => return Some(self.try_template()),
+            ('/', Some('/'), Some('/')) => return self.doc_comment(),
+            ('/', Some('/'), _) => return self.line_comment(),
+            ('(', Some('*'), _) => return self.block_comment(),
 
             // Punctuation
             (';', _, _) => Some(Semi::from_span_start(self.make_position())),
             ('?', _, _) => Some(Question::from_span_start(self.make_position())),
             (':', _, _) => Some(Colon::from_span_start(self.make_position())),
             (',', _, _) => Some(Comma::from_span_start(self.make_position())),
+            ('#', Some('!'), _) => Some(Shebang::from_span_start(self.make_position())),
             ('#', _, _) => Some(Pound::from_span_start(self.make_position())),
+
+            // Operators
+            ('&', Some('='), _) => Some(AndEq::from_span_start(self.make_position())),
+            ('&', Some('&'), _) => Some(LogicalAnd::from_span_start(self.make_position())),
+            ('&', _, _) => Some(And::from_span_start(self.make_position())),
+            ('=', Some('='), _) => Some(Eq::from_span_start(self.make_position())),
+            ('=', _, _) => Some(Assign::from_span_start(self.make_position())),
+            ('.', _, _) => Some(Dot::from_span_start(self.make_position())),
+            ('>', Some('>'), Some('=')) => {
+                Some(RightShiftEq::from_span_start(self.make_position()))
+            }
+            ('>', Some('>'), _) => Some(RightShift::from_span_start(self.make_position())),
+            ('>', Some('='), _) => Some(GtEq::from_span_start(self.make_position())),
+            ('>', _, _) => Some(Gt::from_span_start(self.make_position())),
+            ('<', Some('<'), Some('=')) => Some(LeftShiftEq::from_span_start(self.make_position())),
+            ('<', Some('<'), _) => Some(LeftShift::from_span_start(self.make_position())),
+            ('|', Some('|'), _) => Some(LogicalOr::from_span_start(self.make_position())),
+            ('|', Some('='), _) => Some(OrEq::from_span_start(self.make_position())),
+            ('|', _, _) => Some(Or::from_span_start(self.make_position())),
+            ('<', Some('='), _) => Some(LtEq::from_span_start(self.make_position())),
+            ('<', _, _) => Some(Lt::from_span_start(self.make_position())),
+            ('-', Some('='), _) => Some(MinusEq::from_span_start(self.make_position())),
+            ('-', _, _) => Some(Minus::from_span_start(self.make_position())),
+            ('!', Some('='), _) => Some(NotEq::from_span_start(self.make_position())),
+            ('!', _, _) => Some(Not::from_span_start(self.make_position())),
+            ('+', Some('='), _) => Some(PlusEq::from_span_start(self.make_position())),
+            ('+', _, _) => Some(Plus::from_span_start(self.make_position())),
+            ('%', Some('='), _) => Some(RemEq::from_span_start(self.make_position())),
+            ('%', _, _) => Some(Rem::from_span_start(self.make_position())),
+            ('/', Some('='), _) => Some(SlashEq::from_span_start(self.make_position())),
+            ('/', _, _) => Some(Slash::from_span_start(self.make_position())),
+            ('*', Some('='), _) => Some(StarEq::from_span_start(self.make_position())),
+            ('*', _, _) => Some(Star::from_span_start(self.make_position())),
+            ('^', Some('='), _) => Some(XorEq::from_span_start(self.make_position())),
+            ('^', _, _) => Some(Xor::from_span_start(self.make_position())),
 
             // Whitespace
             ('\r', Some('\n'), _) => {
+                let span = Span {
+                    start: Position {
+                        line: self.line,
+                        column: self.column,
+                    },
+                    end: Position {
+                        line: self.line,
+                        column: self.column + 2,
+                    },
+                };
+
                 self.index += 2;
                 self.column = 0;
                 self.line += 1;
 
+                // Some(Token::Newline(Newline { span }))
                 None
             }
             ('\n', _, _) => {
+                let span = Span {
+                    start: Position {
+                        line: self.line,
+                        column: self.column,
+                    },
+                    end: Position {
+                        line: self.line,
+                        column: self.column + 1,
+                    },
+                };
+
                 self.index += 1;
                 self.column = 0;
                 self.line += 1;
 
+                // Some(Token::Newline(Newline { span }))
                 None
             }
             (' ' | '\x09'..='\x0d', _, _) => {

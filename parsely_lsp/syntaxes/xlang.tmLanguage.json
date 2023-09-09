@@ -9,29 +9,70 @@
             "include": "#attribute"
         },
         {
-            "include": "#keyword"
+            "include": "#module_binding"
         },
         {
-            "include": "#item"
+            "include": "#function_binding"
+        },
+        {
+            "include": "#type_binding"
+        },
+        {
+            "include": "#value_binding"
+        },
+        {
+            "include": "#primitve_type"
+        },
+        {
+            "include": "#control_flow"
+        },
+        {
+            "include": "#keyword"
         },
         {
             "include": "#literal"
         },
         {
             "include": "#comments"
-        },
-        {
-            "include": "#instruction-format"
         }
     ],
     "repository": {
-        "meta": {
-            "match": "<(function)>",
-            "captures": {
-                "1": {
-                    "name": "keyword"
+        "all": {
+            "patterns": [
+                {
+                    "include": "#meta"
+                },
+                {
+                    "include": "#attribute"
+                },
+                {
+                    "include": "#module_binding"
+                },
+                {
+                    "include": "#function_binding"
+                },
+                {
+                    "include": "#type_binding"
+                },
+                {
+                    "include": "#value_binding"
+                },
+                {
+                    "include": "#primitve_type"
+                },
+                {
+                    "include": "#control_flow"
+                },
+                {
+                    "include": "#keyword"
+                },
+                {
+                    "include": "#literal"
+                },
+                {
+                    "include": "#comments"
                 }
-            }
+            ]
         },
         "attribute": {
             "begin": "#!\\s*\\[",
@@ -42,33 +83,103 @@
                 }
             ]
         },
-        "item": {
-            "begin": "\\b(let)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+        "module_binding": {
+            "match": "\\b(module)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword"
+                },
+                "2": {
+                    "name": "support.other.namespace"
+                }
+            }
+        },
+        "type_binding": {
+            "match": "\\b(type)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword"
+                },
+                "2": {
+                    "name": "entity.name.type"
+                }
+            }
+        },
+        "function_binding": {
+            "begin": "\\b(let)\\s+(?:(\\s*const|inline|internal)\\s*)*([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+            "end": "\\)",
+            "name": "func.vjvsdflk",
             "beginCaptures": {
                 "1": {
                     "name": "keyword"
                 },
                 "2": {
-                    "name": "variable.name"
+                    "name": "keyword"
+                },
+                "3": {
+                    "name": "entity.name.function"
                 }
             },
-            "end": ";",
             "patterns": [
                 {
-                    "include": "#meta"
+                    "include": "#all"
                 },
                 {
-                    "include": "#instruction"
-                },
-                {
-                    "include": "#literal"
+                    "match": "(:|,=)",
+                    "name": "punctuation"
                 }
             ]
+        },
+        "value_binding": {
+            "match": "\\b(let)\\s+(?:(mut)\\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\\s*:?\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword"
+                },
+                "2": {
+                    "name": "keyword"
+                },
+                "3": {
+                    "name": "variable.name"
+                }
+            }
+        },
+        "primitve_type": {
+            "match": "\\b(uint[0-9]*|int[0-9]*|float[0-9]*|fixed[0-9]*|bool|char|string|anytype)\\b",
+            "captures": {
+                "1": {
+                    "name": "entity.name.type"
+                }
+            }
+        },
+        "control_flow": {
+            "match": "\\b(loop|export|import|in|if|do|then|else|match|with|return|break|continue)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword.control"
+                }
+            }
+        },
+        "keyword": {
+            "match": "\\b(let|type|module|typeof|typeinfo|of|mut|sizeof|const|inline|persist|internal)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword"
+                }
+            }
         },
         "literal": {
             "patterns": [
                 {
-                    "match": "\"([^\"]+)\"",
+                    "match": "'([^\"]*)'",
+                    "captures": {
+                        "0": {
+                            "name": "string.quoted.single"
+                        }
+                    }
+                },
+                {
+                    "match": "\"([^\"]*)\"",
                     "captures": {
                         "0": {
                             "name": "string.quoted.double"
@@ -76,73 +187,52 @@
                     }
                 },
                 {
-                    "match": "\\b\\d+",
-                    "name": "constant.numeric"
-                }
-            ]
-        },
-        "instruction-format": {
-            "begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\b",
-            "end": "(;|,|$\\n?)",
-            "beginCaptures": {
-                "1": {
-                    "name": "keyword"
-                }
-            },
-            "patterns": [
-                {
-                    "match": "\\b(reg|imm)\\s*:\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+                    "match": "(true|false|none)",
                     "captures": {
                         "1": {
-                            "name": "entity.name.type"
+                            "name": "keyword"
+                        }
+                    }
+                },
+                {
+                    "begin": "([a-zA-Z_][a-zA-Z0-9_]*)\\(",
+                    "end": "\\)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "entity.name.function"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#all"
                         },
-                        "2": {
-                            "name": "variable.name"
+                        {
+                            "match": "(,|:)",
+                            "name": "punctuation"
                         }
-                    }
-                }
-            ]
-        },
-        "instruction": {
-            "begin": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\b",
-            "end": "(;|,|$\\n?)",
-            "beginCaptures": {
-                "1": {
-                    "name": "keyword"
-                }
-            },
-            "patterns": [
-                {
-                    "match": "\\b([A-Z_][A-Z0-9_]*)\\b",
-                    "captures": {
-                        "1": {
-                            "name": "constant.other.caps"
-                        }
-                    }
+                    ],
+                    "name": "variable.name"
                 },
                 {
-                    "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\b",
-                    "captures": {
-                        "1": {
-                            "name": "entity.name.type"
-                        }
-                    }
+                    "match": "[a-zA-Z_][a-zA-Z0-9_]*",
+                    "name": "variable.name"
                 },
                 {
-                    "include": "#literal"
+                    "match": "\\b\\d+(?:.\\d*)?\\b",
+                    "name": "constant.numeric"
                 }
             ]
         },
         "comments": {
             "patterns": [
                 {
-                    "begin": "\\(\\*",
+                    "begin": "/\\*",
                     "captures": {
                         "0": {
                             "name": "punctuation.definition.comment"
                         }
                     },
-                    "end": "\\*\\)",
+                    "end": "\\*/",
                     "name": "comment.block"
                 },
                 {
@@ -164,14 +254,6 @@
                     "name": "comment.line.double-slash"
                 }
             ]
-        },
-        "node_type": {
-            "match": "^\\s*([A-Z_][A-Z_0-9]*?)@",
-            "captures": {
-                "1": {
-                    "name": "entity.name.class"
-                }
-            }
         }
     }
 }

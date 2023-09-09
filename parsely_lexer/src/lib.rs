@@ -3,6 +3,7 @@ use std::{
     fmt::{Debug, Display},
 };
 
+use parsely_macros::{match_token, consume_kw};
 use tokens::*;
 
 #[macro_use]
@@ -386,12 +387,29 @@ impl Lexer {
         }
 
         let token = match kw_slice {
-            /* true */
-            ['t', 'r', 'u', 'e'] => Some(Bool::from_value(true, slice, self.make_position())),
-            /* false */
-            ['f', 'a', 'l', 's', 'e'] => Some(Bool::from_value(false, slice, self.make_position())),
+            match_token!["true"] => Some(Bool::from_value(true, slice, self.make_position())),
+            match_token!["false"] => Some(Bool::from_value(false, slice, self.make_position())),
 
-            ['l', 'e', 't'] => Some(tokens::Let::from_span_start(self.make_position())),
+            match_token!["let"] => consume_kw![Let],
+            match_token!["mut"] => consume_kw![Mut],
+            match_token!["type"] => consume_kw![Type],
+            match_token!["module"] => consume_kw![Module],
+            match_token!["if"] => consume_kw![If],
+            match_token!["else"] => consume_kw![Else],
+            match_token!["loop"] => consume_kw![Loop],
+            match_token!["do"] => consume_kw![Do],
+            match_token!["of"] => consume_kw![Of],
+            match_token!["in"] => consume_kw![In],
+            match_token!["none"] => consume_kw![Nones],
+            match_token!["match"] => consume_kw![Match],
+            match_token!["with"] => consume_kw![With],
+            match_token!["export"] => consume_kw![Export],
+            match_token!["import"] => consume_kw![Import],
+            match_token!["const"] => consume_kw![Const],
+            match_token!["inline"] => consume_kw![Inline],
+            match_token!["internal"] => consume_kw![Internal],
+            match_token!["persist"] => consume_kw![Persist],
+
             c => Some(Ident::from_span_start(c, self.make_position())),
         };
 
@@ -550,7 +568,7 @@ impl Lexer {
         let chars = [self.chars.get(self.index)?, self.chars.get(self.index + 1)?];
 
         match chars {
-            ['(', '*'] => {
+            ['/', '*'] => {
                 self.index += 2;
                 self.column += 2;
 
@@ -558,7 +576,7 @@ impl Lexer {
                     let chars = [self.chars.get(self.index)?, self.chars.get(self.index + 1)?];
 
                     match chars {
-                        ['*', ')'] => {
+                        ['*', '/'] => {
                             self.index += 2;
                             self.column += 2;
 
@@ -708,7 +726,7 @@ impl Lexer {
             ('"' | '\'', _, _) => return Some(self.try_string()),
             ('/', Some('/'), Some('/')) => return self.doc_comment(),
             ('/', Some('/'), _) => return self.line_comment(),
-            ('(', Some('*'), _) => return self.block_comment(),
+            ('/', Some('*'), _) => return self.block_comment(),
 
             // Punctuation
             (';', _, _) => Some(Semi::from_span_start(self.make_position())),

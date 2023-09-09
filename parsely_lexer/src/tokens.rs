@@ -568,7 +568,28 @@ impl crate::AsSpan for DocComment {
 define_tokens! {
     Tok;
     pub enum Token {
+        // Keyword
         Let = let,
+        Mut = mut,
+        Type = type,
+        Module = module,
+        If = if,
+        Else = else,
+        Loop = loop,
+        Do = do,
+        Of = of,
+        In = in,
+        True = true,
+        False = false,
+        Nones = none,
+        Match = match,
+        With = with,
+        Export = export,
+        Import = import,
+        Const = const,
+        Inline = inline,
+        Internal = internal,
+        Persist = persist,
 
         // Punctuation
         Semi = ;,
@@ -601,6 +622,8 @@ define_tokens! {
         PlusEq = +=,
         Rem = %,
         RemEq = %=,
+        Range = ..,
+        RangeEq = ..=,
         RightShift = >>,
         RightShiftEq = >>=,
         Slash = /,

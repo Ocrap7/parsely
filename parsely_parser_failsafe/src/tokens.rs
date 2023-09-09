@@ -24,6 +24,26 @@ macro_rules! impl_token_parse {
 
 impl_token_parse! {
     Let,
+    Mut,
+    Type,
+    Module,
+    If,
+    Else,
+    Loop,
+    Do,
+    Of,
+    In,
+    True,
+    False,
+    Nones,
+    Match,
+    With,
+    Export,
+    Import,
+    Const,
+    Inline,
+    Internal,
+    Persist,
 
     // Punctuation
     Semi,

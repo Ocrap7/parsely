@@ -2,11 +2,11 @@ use std::fmt::Debug;
 
 use parsely_diagnostics::{Diagnostic, DiagnosticLevel};
 use parsely_lexer::{
-    tokens::{self, Bracket, Group, GroupBracket, Token},
+    tokens::{self, Bracket, DocComment, Group, GroupBracket, Token},
     AsSpan, Tok,
 };
 
-use crate::{dummy::Dummy, expression::Expression, Brackets, Parse, Punctuation, Result};
+use crate::{dummy::Dummy, expression::Expression, Brackets, Parens, Parse, Punctuation, Result, types::Type};
 
 #[macro_export]
 macro_rules! simple_attempt {
@@ -37,6 +37,10 @@ macro_rules! simple_attempt {
     [@mtok [;] as $t:ident] => { Tok![enum ; as $t] };
     [@mtok [;]] => { Tok![enum ;] };
     [@tok [;]] => { Tok![;] };
+
+    [@mtok [:] as $t:ident] => { Tok![enum : as $t] };
+    [@mtok [:]] => { Tok![enum :] };
+    [@tok [:]] => { Tok![:] };
 
     [@mtok $tok:ident as $t:ident] => { Tok![enum $tok as $t] };
     [@mtok $tok:ident] => { Tok![enum $tok ] };
@@ -85,102 +89,102 @@ macro_rules! simple_attempt {
 }
 
 #[derive(Debug, Clone)]
-pub struct Op {
-    pub op: tokens::Ident,
-    pub args: Expression,
+pub struct Parameter {
+    pub name: tokens::Ident,
+    pub colon_tok: Tok![:],
+    pub ty: Type,
+    pub default: Option<(Tok![=], Expression)>,
 }
 
-impl Parse for Op {
-    fn parse(stream: &'_ mut crate::ParseStream) -> crate::Result<Self> {
-        let ident = match stream.peekn(1)? {
-            Token::Ident(_) => stream.parse()?,
-            tok => {
-                stream.push_diagnostic(Diagnostic::UnexpectedToken {
-                    found: tok.clone(),
-                    expected: "instruction".to_string(),
-                });
-                tokens::Ident::new_dummy(stream.current_position())
-            }
-        };
-
-        Ok(Op {
-            op: ident,
-            args: stream.parse().expect("Should never error"),
-        })
-    }
-}
-
-impl AsSpan for Op {
-    fn as_span(&self) -> parsely_lexer::Span {
-        self.op.as_span().join(self.args.as_span())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct OpList {
-    pub list: Punctuation<Op, tokens::Comma>,
-}
-
-impl Parse for OpList {
-    fn parse(stream: &'_ mut crate::ParseStream) -> crate::Result<Self> {
-        Ok(OpList {
-            list: Punctuation::parse_end_terminator::<Tok![;]>(stream)?,
-        })
-    }
-}
-
-impl AsSpan for OpList {
-    fn as_span(&self) -> parsely_lexer::Span {
-        self.list.as_span()
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum BoundValue {
-    Expression(Expression),
-    OpList(OpList),
-}
-
-impl Parse for BoundValue {
+impl Parse for Parameter {
     fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
-        let expr = stream.try_parse_with::<Expression>(|stream| {
-            let expr = stream.parse::<Expression>().expect("Should not error");
+        let name = simple_attempt!(stream => [ident]);
+        let colon_tok = simple_attempt!(stream => [:]);
 
-            match (expr, stream.peek_expected("semicolon")?) {
-                (expr, tokens::Tok![enum ;]) => Ok(expr),
-                (expr, tokens::Tok![enum let]) => Ok(expr),
-                (_, tok) => Err(Diagnostic::UnexpectedToken {
-                    found: tok.clone(),
-                    expected: "semicolon".to_string(),
-                }),
-            }
-        });
-
-        expr.map(BoundValue::Expression)
-            .or_else(|_| stream.parse().map(BoundValue::OpList))
+        Ok(Parameter {
+            name,
+            colon_tok,
+            ty: stream.parse()?,
+            default: if let Tok![enum =] = stream.peek()? {
+                Some((stream.parse()?, stream.parse()?))
+            } else {
+                None
+            },
+        })
     }
 }
 
-impl AsSpan for BoundValue {
-    fn as_span(&self) -> parsely_lexer::Span {
-        match self {
-            BoundValue::Expression(expr) => expr.as_span(),
-            BoundValue::OpList(op) => op.as_span(),
-        }
-    }
-}
+pub type Parameters = Parens<Punctuation<Parameter, Tok![,]>>;
 
 #[derive(Debug, Clone)]
-pub struct Binding {
+pub struct FunctionBinding {
     pub docs: Option<Vec<tokens::DocComment>>,
+    pub export_tok: Option<Tok![export]>,
     pub let_tok: Tok![let],
+    pub const_tok: Option<Tok![const]>,
+    pub inline_tok: Option<Tok![inline]>,
+    pub internal_tok: Option<Tok![internal]>,
     pub ident: tokens::Ident,
+    pub parameters: Parameters,
     pub eq_tok: Tok![=],
-    pub value: BoundValue,
+    pub value: Vec<Item>,
     pub semi_tok: Tok![;],
 }
 
-impl Parse for Binding {
+impl FunctionBinding {
+    fn parse_with_docs(
+        stream: &'_ mut crate::ParseStream,
+        docs: Option<Vec<DocComment>>,
+    ) -> Result<Self> {
+        let export_tok = if let Tok![enum export as mutable] = stream.peek()? {
+            Some(stream.next_ref(mutable))
+        } else {
+            None
+        };
+
+        let let_tok = simple_attempt!(stream => let);
+
+        let const_tok = if let Tok![enum const as mutable] = stream.peek()? {
+            Some(stream.next_ref(mutable))
+        } else {
+            None
+        };
+
+        let internal_tok = if let Tok![enum internal as mutable] = stream.peek()? {
+            Some(stream.next_ref(mutable))
+        } else {
+            None
+        };
+
+        let inline_tok = if let Tok![enum inline as mutable] = stream.peek()? {
+            Some(stream.next_ref(mutable))
+        } else {
+            None
+        };
+
+        let ident = simple_attempt!(stream => [ident]);
+        let parameters = stream.parse()?;
+        let eq_tok = simple_attempt!(stream => [=]);
+        let value = stream.parse().expect("Should never error");
+        let semi_tok = simple_attempt!(stream => [;]);
+
+        Ok(FunctionBinding {
+            docs,
+            export_tok,
+            let_tok,
+            const_tok,
+            inline_tok,
+            internal_tok,
+            ident,
+            parameters,
+            eq_tok,
+            value,
+            semi_tok,
+        })
+    }
+}
+
+impl Parse for FunctionBinding {
     fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
         let mut docs = None;
 
@@ -194,26 +198,192 @@ impl Parse for Binding {
             }
         }
 
+        FunctionBinding::parse_with_docs(stream, docs)
+    }
+}
+
+impl AsSpan for FunctionBinding {
+    fn as_span(&self) -> parsely_lexer::Span {
+        self.let_tok.as_span().join(self.semi_tok.as_span())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ValueBinding {
+    pub docs: Option<Vec<tokens::DocComment>>,
+    pub export_tok: Option<Tok![export]>,
+    pub let_tok: Tok![let],
+    pub mut_tok: Option<Tok![mut]>,
+    pub ident: tokens::Ident,
+    pub eq_tok: Tok![=],
+    pub value: Expression,
+}
+
+impl ValueBinding {
+    fn parse_with_docs(
+        stream: &'_ mut crate::ParseStream,
+        docs: Option<Vec<DocComment>>,
+    ) -> Result<Self> {
+        let export_tok = if let Tok![enum export as mutable] = stream.peek()? {
+            Some(stream.next_ref(mutable))
+        } else {
+            None
+        };
+
         let let_tok = simple_attempt!(stream => let);
+        let mut_tok = if let Tok![enum mut as mutable] = stream.peek()? {
+            Some(stream.next_ref(mutable))
+        } else {
+            None
+        };
+
         let ident = simple_attempt!(stream => [ident]);
         let eq_tok = simple_attempt!(stream => [=]);
         let value = stream.parse().expect("Should never error");
-        let semi_tok = simple_attempt!(stream => [;]);
 
-        Ok(Binding {
+        Ok(ValueBinding {
             docs,
+            export_tok,
             let_tok,
+            mut_tok,
             ident,
             eq_tok,
             value,
-            semi_tok,
         })
+    }
+}
+
+impl Parse for ValueBinding {
+    fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
+        let mut docs = None;
+
+        while let Ok(tok) = stream.peek() {
+            match tok {
+                Token::DocComment(doc) => {
+                    let docs = docs.get_or_insert(Vec::new());
+                    docs.push(stream.next_ref(doc));
+                }
+                _ => break,
+            }
+        }
+
+        ValueBinding::parse_with_docs(stream, docs)
+    }
+}
+
+impl AsSpan for ValueBinding {
+    fn as_span(&self) -> parsely_lexer::Span {
+        self.let_tok.as_span().join(self.value.as_span())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Binding {
+    Function(FunctionBinding),
+    Value(ValueBinding),
+}
+
+impl Binding {
+    fn parse_with_docs(
+        stream: &'_ mut crate::ParseStream,
+        docs: Option<Vec<DocComment>>,
+    ) -> Result<Self> {
+        if let Token::Group(tokens::Group {
+            bracket: GroupBracket::Paren,
+            ..
+        }) = stream.peekn(2)?
+        {
+            FunctionBinding::parse_with_docs(stream, docs).map(Binding::Function)
+        } else if let Tok![enum const] | Tok![enum inline] | Tok![enum internal] =
+            stream.peekn(1)?
+        {
+            FunctionBinding::parse_with_docs(stream, docs).map(Binding::Function)
+        } else {
+            ValueBinding::parse_with_docs(stream, docs).map(Binding::Value)
+        }
+    }
+}
+
+impl Parse for Binding {
+    fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
+        if let Token::Group(tokens::Group {
+            bracket: GroupBracket::Paren,
+            ..
+        }) = stream.peekn(2)?
+        {
+            stream.parse().map(Binding::Function)
+        } else if let Tok![enum const] | Tok![enum inline] | Tok![enum internal] =
+            stream.peekn(1)?
+        {
+            stream.parse().map(Binding::Function)
+        } else {
+            stream.parse().map(Binding::Value)
+        }
     }
 }
 
 impl AsSpan for Binding {
     fn as_span(&self) -> parsely_lexer::Span {
-        self.let_tok.as_span().join(self.semi_tok.as_span())
+        match self {
+            Binding::Value(val) => val.as_span(),
+            Binding::Function(fun) => fun.as_span(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeAlias {
+    pub docs: Option<Vec<tokens::DocComment>>,
+    pub type_tok: Tok![type],
+    pub ident: tokens::Ident,
+    pub params: Option<Parameters>,
+    pub eq_tok: Tok![=],
+    pub ty: Type,
+}
+
+impl TypeAlias {
+    fn parse_with_docs(
+        stream: &'_ mut crate::ParseStream,
+        docs: Option<Vec<DocComment>>,
+    ) -> Result<Self> {
+        let type_tok = simple_attempt!(stream => type);
+        let ident = simple_attempt!(stream => [ident]);
+        let params = stream.try_parse().ok();
+        let eq_tok = simple_attempt!(stream => [=]);
+        let ty = stream.parse().expect("Should never fail");
+
+        Ok(TypeAlias {
+            docs,
+            type_tok,
+            ident,
+            params,
+            eq_tok,
+            ty,
+        })
+    }
+}
+
+impl Parse for TypeAlias {
+    fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
+        let mut docs = None;
+
+        while let Ok(tok) = stream.peek() {
+            match tok {
+                Token::DocComment(doc) => {
+                    let docs = docs.get_or_insert(Vec::new());
+                    docs.push(stream.next_ref(doc));
+                }
+                _ => break,
+            }
+        }
+
+        TypeAlias::parse_with_docs(stream, docs)
+    }
+}
+
+impl AsSpan for TypeAlias {
+    fn as_span(&self) -> parsely_lexer::Span {
+        self.type_tok.as_span().join(self.ty.as_span())
     }
 }
 
@@ -225,7 +395,6 @@ pub struct Attribute {
 
 impl Parse for Attribute {
     fn parse(stream: &'_ mut crate::ParseStream) -> crate::Result<Self> {
-        println!("{:?}", stream.peek());
         let shebang_tok = simple_attempt!(stream => [shebang]);
         let value = match stream.peek()? {
             Token::Group(Group {
@@ -263,14 +432,15 @@ impl AsSpan for Attribute {
 pub enum Item {
     Attribute(Attribute),
     Binding(Binding),
+    TypeAlias(TypeAlias),
     Poison,
 }
 
 impl Parse for Item {
     fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
-        println!("{}", stream.index.get());
         match stream.peek()? {
             Tok![enum let] | Token::DocComment(_) => stream.parse().map(Item::Binding),
+            Tok![enum type] | Token::DocComment(_) => stream.parse().map(Item::TypeAlias),
             _ => stream.parse().map(Item::Attribute).or_else(|e| {
                 stream.push_diagnostic(Diagnostic::Message(
                     format!(
@@ -287,7 +457,6 @@ impl Parse for Item {
                     DiagnosticLevel::Error,
                 ));
 
-                // Ok(Item::Poison)
                 return Err(e);
             }),
         }
@@ -299,6 +468,7 @@ impl AsSpan for Item {
         match self {
             Item::Attribute(attr) => attr.as_span(),
             Item::Binding(bind) => bind.as_span(),
+            Item::TypeAlias(ta) => ta.as_span(),
             Item::Poison => parsely_lexer::Span::EMPTY,
         }
     }

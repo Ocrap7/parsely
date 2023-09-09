@@ -1,9 +1,8 @@
 [package]
-name = "parsely-parserp"
+name = "parsely-macros"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-parsely-lexer = { path = "../parsely_lexer" }
+[lib]
+proc-macro = true

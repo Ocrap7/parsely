@@ -15,6 +15,7 @@ pub mod dummy;
 pub mod expression;
 pub mod item;
 pub mod tokens;
+pub mod types;
 
 pub mod program;
 

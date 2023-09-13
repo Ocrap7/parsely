@@ -285,7 +285,12 @@ impl Diagnostic {
                           line_offset: usize,
                           line: &str|
          -> std::fmt::Result {
-            assert!(peeked.contains(highlight));
+            let highlight = if peeked.contains(highlight) {
+                highlight
+            } else {
+                peeked
+            };
+            // assert!(peeked.contains(highlight));
 
             write_ln(f, highlight.start.line + line_offset)?;
 
@@ -351,11 +356,18 @@ impl Diagnostic {
             let token_range = cache.line_index(span.start.line);
             assert!(token_range.0.contains(&token_index));
 
-            let start_token = &program.token(
-                token_index
-                    .saturating_sub(LINE_PEEK)
-                    .max(token_range.0.start),
-            );
+            let start_token_index = token_index
+                .saturating_add(LINE_PEEK)
+                .min(token_range.0.start);
+
+            // We don't want to include the EOF token
+            let start_token_index = if start_token_index >= program.len() - 1 {
+                start_token_index - 1
+            } else {
+                start_token_index
+            };
+
+            let start_token = &program.token(start_token_index);
 
             let end_token_index = token_index
                 .saturating_add(LINE_PEEK)

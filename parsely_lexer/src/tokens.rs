@@ -52,6 +52,15 @@ macro_rules! define_tokens {
                     self.0
                 }
             }
+
+            impl PartialEq<Token> for $struct_name {
+                fn eq(&self, other: &Token) -> bool {
+                    match other {
+                        Token::$struct_name{ .. } => true,
+                        _ => false,
+                    }
+                }
+            }
         )*
 
             #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,23 +214,50 @@ macro_rules! define_tokens {
     };
 }
 
-impl PartialEq<Token> for Comma {
-    fn eq(&self, other: &Token) -> bool {
-        match other {
-            Token::Comma(_) => true,
-            _ => false,
-        }
-    }
-}
+// impl PartialEq<Token> for Comma {
+//     fn eq(&self, other: &Token) -> bool {
+//         match other {
+//             Token::Comma(_) => true,
+//             _ => false,
+//         }
+//     }
+// }
 
-impl PartialEq<Token> for Semi {
-    fn eq(&self, other: &Token) -> bool {
-        match other {
-            Token::Semi(_) => true,
-            _ => false,
-        }
-    }
-}
+// impl PartialEq<Token> for Semi {
+//     fn eq(&self, other: &Token) -> bool {
+//         match other {
+//             Token::Semi(_) => true,
+//             _ => false,
+//         }
+//     }
+// }
+
+// impl PartialEq<Token> for Or {
+//     fn eq(&self, other: &Token) -> bool {
+//         match other {
+//             Token::Or(_) => true,
+//             _ => false,
+//         }
+//     }
+// }
+
+// impl PartialEq<Token> for Dot {
+//     fn eq(&self, other: &Token) -> bool {
+//         match other {
+//             Token::Dot(_) => true,
+//             _ => false,
+//         }
+//     }
+// }
+
+// impl PartialEq<Token> for Star {
+//     fn eq(&self, other: &Token) -> bool {
+//         match other {
+//             Token::Star(_) => true,
+//             _ => false,
+//         }
+//     }
+// }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Newline {
@@ -574,6 +610,7 @@ define_tokens! {
         Type = type,
         Module = module,
         If = if,
+        Then = then,
         Else = else,
         Loop = loop,
         Do = do,
@@ -590,6 +627,9 @@ define_tokens! {
         Inline = inline,
         Internal = internal,
         Persist = persist,
+        Return = return,
+        Break = break,
+        Continue = continue,
 
         // Punctuation
         Semi = ;,
@@ -597,11 +637,13 @@ define_tokens! {
         Colon = :,
         Comma = ,,
         Pound = #,
+        Underscore = _,
 
         // Operators
         And = &,
         AndEq = &=,
         Assign = =,
+        Arrow = =>,
         Eq = ==,
         Dot = .,
         Gt = >,

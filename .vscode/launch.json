@@ -114,7 +114,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": ["build", "examples/test1.par"],
             "cwd": "${workspaceFolder}"
         },
         {

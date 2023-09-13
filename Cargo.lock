@@ -551,6 +551,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "parsely_ast"
+version = "0.1.0"
+dependencies = [
+ "parsely-lexer",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

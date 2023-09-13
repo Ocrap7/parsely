@@ -1,7 +1,9 @@
+#![feature(box_patterns)]
 use std::{
     cell::{Cell, Ref, RefCell},
     fmt::Debug,
     rc::Rc,
+    sync::atomic::AtomicU32,
 };
 
 use dummy::Dummy;
@@ -18,6 +20,50 @@ pub mod tokens;
 pub mod types;
 
 pub mod program;
+
+pub(crate) mod testing {
+    use parsely_diagnostics::DiagnosticModuleFmt;
+    use parsely_lexer::Lexer;
+
+    use crate::program::Program;
+
+    use super::*;
+
+    pub fn lx(st: &str) -> Vec<Token> {
+        Lexer::run(st)
+    }
+
+    pub fn prs<T: Parse>(st: &str) -> T {
+        let toks = lx(st);
+        println!("toks: {toks:#?}");
+
+        let mut ps = ParseStream::from(toks);
+        let program = T::parse(&mut ps).unwrap();
+        println!("{:#?}", ps.diagnostics);
+
+        program
+    }
+
+    pub fn prs_prog(st: &str) -> Program {
+        let toks = lx(st);
+        println!("toks: {toks:#?}");
+
+        let program = Program::new("poo.par", st.to_string(), toks);
+        let (program, diags) = program.parse().unwrap();
+
+        let fmt = DiagnosticModuleFmt(&diags, &program);
+        print!("{fmt}");
+
+        program
+    }
+}
+
+#[derive(Debug, Clone, Copy, Hash)]
+pub struct NodeId(pub u32);
+
+impl NodeId {
+    const DUMMY: NodeId = NodeId(u32::MAX);
+}
 
 // pub type Result<T> = std::result::Result<T, T>;
 
@@ -77,7 +123,7 @@ pub trait Parse: Sized {
 const MAX_ATTEMPTS: u8 = 5;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct RestorePoint(usize);
+pub struct RestorePoint(usize, usize);
 
 /// A stream of tokens that can be read from.
 pub struct ParseStream {
@@ -91,6 +137,9 @@ pub struct ParseStream {
     until_terminator: Option<Token>,
     ///
     sub_span: Option<Span>,
+    /// node ids
+    next_id: AtomicU32,
+    ty_ctx: bool,
 }
 
 impl ParseStream {
@@ -105,14 +154,14 @@ impl ParseStream {
 
     /// Trys to parse `T` but if it fails, the token index and diagnostic index will be restored in case parsing T consumed tokens
     pub fn try_parse<T: Parse>(&mut self) -> Result<T> {
-        let index = self.index.get();
-        let diagnostic_len = self.diagnostics.borrow().len();
+        // let index = self.index.get();
+        // let diagnostic_len = self.diagnostics.borrow().len();
+        let restore = self.current_point();
 
         match T::parse(self) {
             Ok(t) => Ok(t),
             Err(e) => {
-                self.index.set(index);
-                self.diagnostics.borrow_mut().truncate(diagnostic_len);
+                self.restore(restore);
                 Err(e)
             }
         }
@@ -136,38 +185,39 @@ impl ParseStream {
         }
     }
 
-    #[must_use]
-    pub fn insert(&mut self, token: impl Into<Token>) -> RestorePoint {
-        let index = self.index.get();
-        self.buffer.insert(index, token.into());
+    // #[must_use]
+    // pub fn insert(&mut self, token: impl Into<Token>) -> RestorePoint {
+    //     let index = self.index.get();
+    //     self.buffer.insert(index, token.into());
 
-        RestorePoint(index)
-    }
+    //     RestorePoint(index)
+    // }
 
-    pub fn insert_at(&mut self, token: impl Into<Token>, restore_point: RestorePoint) {
-        self.buffer.insert(restore_point.0, token.into());
-    }
+    // pub fn insert_at(&mut self, token: impl Into<Token>, restore_point: RestorePoint) {
+    //     self.buffer.insert(restore_point.0, token.into());
+    // }
 
     #[must_use]
     pub fn current_point(&self) -> RestorePoint {
-        RestorePoint(self.index.get())
+        RestorePoint(self.index.get(), self.diagnostics.borrow().len())
     }
 
-    pub fn restore(&mut self, restore_point: RestorePoint) -> RestorePoint {
-        RestorePoint(self.index.replace(restore_point.0))
+    pub fn restore(&mut self, restore_point: RestorePoint) {
+        self.index.replace(restore_point.0);
+        self.diagnostics.borrow_mut().truncate(restore_point.1);
     }
 
     pub fn remove(&mut self, restore_point: RestorePoint) -> Token {
         self.buffer.remove(restore_point.0)
     }
 
-    #[must_use]
-    pub fn remove_current(&mut self) -> (Token, RestorePoint) {
-        (
-            self.buffer.remove(self.index.get()),
-            RestorePoint(self.index.get()),
-        )
-    }
+    // #[must_use]
+    // pub fn remove_current(&mut self) -> (Token, RestorePoint) {
+    //     (
+    //         self.buffer.remove(self.index.get()),
+    //         RestorePoint(self.index.get()),
+    //     )
+    // }
 
     pub fn has_next(&self) -> bool {
         self.index.get() < self.buffer.len()
@@ -309,11 +359,34 @@ impl ParseStream {
             diagnostics: self.diagnostics.clone(),
             until_terminator: None,
             sub_span: Some(span),
+            next_id: AtomicU32::new(0),
+            ty_ctx: false,
         }
+    }
+
+    pub fn ty_ctx<R>(&mut self, f: impl Fn(&mut Self) -> R) -> R {
+        self.ty_ctx = true;
+
+        let r = f(self);
+
+        self.ty_ctx = false;
+
+        r
+    }
+
+    pub fn in_ty_ctx(&self) -> bool {
+        self.ty_ctx
     }
 
     pub fn finish(self) -> Vec<Diagnostic> {
         self.diagnostics.take()
+    }
+
+    pub fn next_id(&self) -> NodeId {
+        NodeId(
+            self.next_id
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+        )
     }
 }
 
@@ -325,6 +398,8 @@ impl From<Vec<Token>> for ParseStream {
             diagnostics: Rc::new(RefCell::new(Vec::new())),
             until_terminator: None,
             sub_span: None,
+            next_id: AtomicU32::new(0),
+            ty_ctx: false,
         }
     }
 }
@@ -337,6 +412,8 @@ impl<'a> From<&'a [Token]> for ParseStream {
             diagnostics: Rc::new(RefCell::new(Vec::new())),
             until_terminator: None,
             sub_span: None,
+            next_id: AtomicU32::new(0),
+            ty_ctx: false,
         }
     }
 }
@@ -349,6 +426,8 @@ impl<'a> From<&'a Vec<Token>> for ParseStream {
             diagnostics: Rc::new(RefCell::new(Vec::new())),
             until_terminator: None,
             sub_span: None,
+            next_id: AtomicU32::new(0),
+            ty_ctx: false,
         }
     }
 }
@@ -385,7 +464,7 @@ where
 
                     stream.increment();
                     continue;
-                },
+                }
             };
 
             items.push(item);
@@ -393,6 +472,71 @@ where
 
         Ok(items)
     }
+}
+
+pub fn parse_vec_to_one_of2<
+    T: Parse + Debug,
+    P1: Dummy + PartialEq<Token>,
+    P2: Dummy + PartialEq<Token>,
+>(
+    stream: &'_ mut ParseStream,
+) -> Result<Vec<T>> {
+    let mut items = Vec::new();
+    let dummy_term1 = P1::new_dummy(Position::EMPTY);
+    let dummy_term2 = P2::new_dummy(Position::EMPTY);
+
+    while stream.has_next() && !stream.peek_eof() {
+        match stream.peek() {
+            Ok(t) if &dummy_term1 == t || &dummy_term2 == t => return Ok(items),
+            _ => {}
+        }
+
+        let item = match stream.parse::<T>() {
+            Ok(v) => v,
+            Err(d) => {
+                stream.push_diagnostic(d);
+
+                stream.increment();
+                continue;
+            }
+        };
+
+        items.push(item);
+    }
+
+    Ok(items)
+}
+
+pub fn parse_vec_to_terminator<T: Parse + Debug, P: Dummy + PartialEq<Token>>(
+    stream: &'_ mut ParseStream,
+) -> Result<Vec<T>> {
+    let mut items = Vec::new();
+    let dummy_term = P::new_dummy(Position::EMPTY);
+
+    let mut i = 0;
+    while stream.has_next() && !stream.peek_eof() && i < 10 {
+        match stream.peek() {
+            Ok(t) if &dummy_term == t => return Ok(items),
+            _ => {}
+        }
+
+        let item = match stream.parse::<T>() {
+            Ok(v) => v,
+            Err(d) => {
+                stream.push_diagnostic(d);
+
+                stream.increment();
+                continue;
+                // return Ok(items)
+            }
+        };
+
+        items.push(item);
+
+        i += 1;
+    }
+
+    Ok(items)
 }
 
 #[derive(Debug, Clone)]
@@ -426,6 +570,12 @@ impl<T: Parse> Parse for Parens<T> {
                 expected: "parenthesis".into(),
             }),
         }
+    }
+}
+
+impl<T: Parse> AsSpan for Parens<T> {
+    fn as_span(&self) -> Span {
+        self.parens.span
     }
 }
 
@@ -698,19 +848,18 @@ where
 
         Ok(Punctuation { items, last })
     }
-}
 
-impl<T, P> Parse for Punctuation<T, P>
-where
-    T: Parse,
-    P: Parse + Dummy + PartialEq<Token> + AsRef<str>,
-{
-    fn parse(stream: &'_ mut ParseStream) -> Result<Self> {
+    pub fn parse_first_with(
+        stream: &'_ mut ParseStream,
+        first: impl IntoIterator<Item = T>,
+        f: impl Fn(&'_ mut ParseStream) -> Result<T>,
+    ) -> Result<Self> {
         let mut items = Vec::new();
         let mut last = None;
+        let mut first = first.into_iter();
 
         while stream.has_next() {
-            if let Ok(item) = stream.try_parse() {
+            if let Some(item) = first.next().or_else(|| stream.try_parse_with(&f).ok()) {
                 let punct = stream.parse();
                 match punct {
                     Ok(punct) => items.push((item, punct)),
@@ -743,7 +892,29 @@ where
             }
         }
 
+        if let Some(first) = first.next() {
+            last = Some(Box::new(first))
+        }
+
         Ok(Punctuation { items, last })
+    }
+
+    pub fn parse_first(
+        stream: &'_ mut ParseStream,
+        first: impl IntoIterator<Item = T>,
+    ) -> Result<Self> {
+        Punctuation::parse_first_with(stream, first, T::parse)
+    }
+}
+
+impl<T, P> Parse for Punctuation<T, P>
+where
+    T: Parse,
+    P: Parse + Dummy + PartialEq<Token> + AsRef<str>,
+{
+    fn parse(stream: &'_ mut ParseStream) -> Result<Self> {
+        let first = stream.parse();
+        Punctuation::parse_first(stream, first)
     }
 }
 

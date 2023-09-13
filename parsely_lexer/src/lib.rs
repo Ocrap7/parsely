@@ -1,9 +1,10 @@
+#![feature(result_option_inspect)]
 use std::{
     cmp::Ordering,
     fmt::{Debug, Display},
 };
 
-use parsely_macros::{match_token, consume_kw};
+use parsely_macros::{consume_kw, match_token};
 use tokens::*;
 
 #[macro_use]
@@ -11,6 +12,12 @@ pub mod tokens;
 
 pub trait AsSpan {
     fn as_span(&self) -> Span;
+}
+
+impl<T: AsSpan> AsSpan for Option<T> {
+    fn as_span(&self) -> Span {
+        self.as_ref().map(AsSpan::as_span).unwrap_or_default()
+    }
 }
 
 pub trait SearchPosition<T>
@@ -395,6 +402,7 @@ impl Lexer {
             match_token!["type"] => consume_kw![Type],
             match_token!["module"] => consume_kw![Module],
             match_token!["if"] => consume_kw![If],
+            match_token!["then"] => consume_kw![Then],
             match_token!["else"] => consume_kw![Else],
             match_token!["loop"] => consume_kw![Loop],
             match_token!["do"] => consume_kw![Do],
@@ -409,6 +417,9 @@ impl Lexer {
             match_token!["inline"] => consume_kw![Inline],
             match_token!["internal"] => consume_kw![Internal],
             match_token!["persist"] => consume_kw![Persist],
+            match_token!["return"] => consume_kw![Return],
+            match_token!["break"] => consume_kw![Break],
+            match_token!["continue"] => consume_kw![Continue],
 
             c => Some(Ident::from_span_start(c, self.make_position())),
         };
@@ -432,28 +443,45 @@ impl Lexer {
             .position(|c| !c.is_ascii_digit())
             .unwrap_or(slice.len());
 
+        let mut dotted = false;
         let float_ind = slice
             .iter()
-            .position(|c| !c.is_ascii_digit())
+            .position(|c| {
+                let res = !c.is_ascii_digit() && *c != '.' || dotted;
+
+                if *c == '.' {
+                    dotted = true
+                }
+
+                res
+            })
             .unwrap_or(slice.len());
 
         let int_slice = &slice[..int_ind];
         let float_slice = &slice[..float_ind];
+
+        // We check if there is a duplicate '.' in case of an interger range: 0..10
+        if !float_slice.is_empty()
+            && float_slice.contains(&'.')
+            && slice
+                .get(float_ind - 1..=float_ind)
+                .inspect(|f| println!("{f:?}"))
+                .filter(|c| if let ['.', '.'] = c { true } else { false })
+                .is_none()
+        {
+            let token = Some(Float::from_span_start(float_slice, self.make_position()));
+
+            self.index += float_slice.len();
+            self.column += float_slice.len();
+
+            return token;
+        }
 
         if !int_slice.is_empty() {
             let token = Some(Int::from_span_start(int_slice, self.make_position()));
 
             self.index += int_slice.len();
             self.column += int_slice.len();
-
-            return token;
-        }
-
-        if !float_slice.is_empty() {
-            let token = Some(Float::from_span_start(float_slice, self.make_position()));
-
-            self.index += float_slice.len();
-            self.column += float_slice.len();
 
             return token;
         }
@@ -631,7 +659,11 @@ impl Lexer {
                 let token = DocComment {
                     span: start.join(end),
                     value_span: start_value.join(end),
-                    value: slice.iter().collect::<std::string::String>().trim().to_string(),
+                    value: slice
+                        .iter()
+                        .collect::<std::string::String>()
+                        .trim()
+                        .to_string(),
                 };
 
                 Some(Some(Token::DocComment(token)))
@@ -741,7 +773,10 @@ impl Lexer {
             ('&', Some('&'), _) => Some(LogicalAnd::from_span_start(self.make_position())),
             ('&', _, _) => Some(And::from_span_start(self.make_position())),
             ('=', Some('='), _) => Some(Eq::from_span_start(self.make_position())),
+            ('=', Some('>'), _) => Some(Arrow::from_span_start(self.make_position())),
             ('=', _, _) => Some(Assign::from_span_start(self.make_position())),
+            ('.', Some('.'), Some('=')) => Some(RangeEq::from_span_start(self.make_position())),
+            ('.', Some('.'), _) => Some(tokens::Range::from_span_start(self.make_position())),
             ('.', _, _) => Some(Dot::from_span_start(self.make_position())),
             ('>', Some('>'), Some('=')) => {
                 Some(RightShiftEq::from_span_start(self.make_position()))

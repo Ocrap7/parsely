@@ -7,7 +7,7 @@ use std::{
 
 use clap::Parser;
 use parsely_diagnostics::{Diagnostic, DiagnosticFmt, DiagnosticLevel, DiagnosticModuleFmt};
-use parsely_gen_asm::{module::Module, pack::Pack};
+// use parsely_gen_asm::{module::Module, pack::Pack};
 use parsely_lexer::{Lexer, Span};
 use parsely_parser::program::Program;
 
@@ -43,13 +43,6 @@ fn print_error(str: String) {
 }
 
 fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
-    let mut pack = File::open("examples/specfile.toml").unwrap();
-
-    let mut pack_str = String::with_capacity(1024);
-    pack.read_to_string(&mut pack_str).unwrap();
-
-    let pack = Arc::new(parsely_gen_asm::toml::from_str::<Pack>(&pack_str).unwrap());
-
     for file in sources {
         if file.is_dir() {
             let files = match std::fs::read_dir(file) {
@@ -108,11 +101,11 @@ fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
             continue;
         };
 
-        let output = output.as_ref().join(filename).with_extension("s");
-        match compile_file(&file, output, pack.clone()) {
+        let output = output.as_ref().join(filename).with_extension("rs");
+        match compile_file(&file, output) {
             Ok((module, program)) => {
-                let fmt = DiagnosticModuleFmt(module.diagnostics(), &program);
-                print!("{fmt}");
+                // let fmt = DiagnosticModuleFmt(module.diagnostics(), &program);
+                // print!("{fmt}");
             }
             Err(e) => {
                 match e.kind() {
@@ -126,11 +119,7 @@ fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
     }
 }
 
-fn compile_file(
-    input: impl AsRef<Path>,
-    output: impl AsRef<Path>,
-    pack: Arc<Pack>,
-) -> io::Result<(Module, Program)> {
+fn compile_file(input: impl AsRef<Path>, output: impl AsRef<Path>) -> io::Result<((), Program)> {
     let mut file = File::open(&input)?;
 
     let mut buffer = String::with_capacity(256);
@@ -139,24 +128,28 @@ fn compile_file(
     let tokens = Lexer::run(buffer.as_bytes());
     println!("{tokens:#?}");
     let (program, diagnostics) = Program::new(&input, buffer, tokens).parse().unwrap();
+    println!("{:3?}", program.items);
 
-    println!("{:#?}", pack);
+    let dmd = DiagnosticModuleFmt(&diagnostics, &program);
+    println!("{dmd}");
 
-    let module = Module::run_new(
-        input
-            .as_ref()
-            .file_stem()
-            .unwrap()
-            .to_string_lossy()
-            .as_ref(),
-        &program,
-        pack,
-        diagnostics,
-    )
-    .unwrap();
+    // println!("{:#?}", pack);
+
+    // let module = Module::run_new(
+    //     input
+    //         .as_ref()
+    //         .file_stem()
+    //         .unwrap()
+    //         .to_string_lossy()
+    //         .as_ref(),
+    //     &program,
+    //     diagnostics,
+    // )
+    // .unwrap();
 
     let mut output_file = File::create(&output)?;
-    output_file.write_all(module.buffer.as_bytes())?;
+    write!(output_file, "{:#?}", program.items)?;
+    // output_file.wri;
 
-    Ok((module, program))
+    Ok(((), program))
 }

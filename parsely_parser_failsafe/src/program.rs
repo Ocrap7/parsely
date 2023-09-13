@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path};
 
 use parsely_diagnostics::Diagnostic;
-use parsely_lexer::{tokens::Token, AsSpan, Position, Range, Span};
+use parsely_lexer::{tokens::Token, AsSpan, Position, Range, Span, Tok};
 
 use crate::{item::Item, tokens, ParseStream};
 
@@ -51,7 +51,7 @@ impl Program {
     /// Parses the program, filling the `items` field with parsed values
     pub fn parse(mut self) -> crate::Result<(Program, Vec<Diagnostic>)> {
         let mut stream = ParseStream::from(&self.tokens);
-        self.items = stream.parse()?;
+        self.items = crate::parse_vec_to_terminator::<_, Tok![;]>(&mut stream)?;
 
         Ok((self, stream.finish()))
     }

@@ -106,7 +106,7 @@
             }
         },
         "function_binding": {
-            "begin": "\\b(let)\\s+(?:(\\s*const|inline|internal)\\s*)*([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+            "begin": "\\b(let)\\s+((?:(?:const|inline|internal)\\s*)*(?=\\b))([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
             "end": "\\)",
             "name": "func.vjvsdflk",
             "beginCaptures": {

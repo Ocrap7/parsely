@@ -114,6 +114,7 @@ let match_union (value: TaggedUnion) =
         .NonTypeValue : (i, b)
             debug(i, b)
             4
+    ;
 ;
 
 // let tu = .int32 : 34
@@ -123,10 +124,12 @@ let match_union (value: TaggedUnion) =
 
 type ExplicitlyTaggedUnion = uint8 of 
     int32 = 0 | bool | MyInt // Explicit index of int32, rest are incremented
+;
 
 type Model = 
     position: uint,
-    data: [char]mut
+    data: [mut char]
+;
 
 let model_func (self: Model&mut): char =
     let tmp = data[self.position]
@@ -139,11 +142,12 @@ let model_func (self: Model&mut): char =
 
 type Container (Type: type, len: uint) = 
     data: [Type: len]
+;
 
 // let p: Container(int32, 4) = { data: &[1, 2, 3, 4] }
 
 type Computed (Type: type) = 
-    let size = sizeof Type
+    let size = Type.typeinfo.size
 
     match size with
         1 => uint8,
@@ -153,10 +157,12 @@ type Computed (Type: type) =
 ;
 
 module Util =
-    let internal debug(values: [anytype: _])
-    let internal print(const fmt: string, value: [anytype: _])
-    let internal println(const fmt: string, value: [anytype: _])
+    export let internal debug(values: [anytype: _])
+    export let internal print(const fmt: string, value: [anytype: _])
+    export let internal println(const fmt: string, value: [anytype: _])
 ;
+
+import Util // Every exported in Util will be available in this module
 
 module Generic (T: type) =
     export let receive (): T = ();

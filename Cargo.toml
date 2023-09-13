@@ -1,3 +1,11 @@
 [workspace]
-members = ["parsely_lexer", "parsely_parser_failsafe", "parsely_diagnostics", "parsely_macros", "parsely", "parsely_lsp/lsp_server"]
+members = [
+    "parsely_lexer",
+    "parsely_ast",
+    "parsely_parser_failsafe",
+    "parsely_diagnostics",
+    "parsely_macros",
+    "parsely",
+    "parsely_lsp/lsp_server",
+]
 resolver = "2"

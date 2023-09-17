@@ -58,7 +58,7 @@ pub(crate) mod testing {
     }
 }
 
-#[derive(Debug, Clone, Copy, Hash)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct NodeId(pub u32);
 
 impl NodeId {
@@ -583,6 +583,12 @@ impl<T: Parse> AsSpan for Parens<T> {
 pub struct Braces<T: Parse> {
     pub braces: parsely_lexer::tokens::Brace,
     pub value: Box<T>,
+}
+
+impl<T: Parse> AsSpan for Braces<T> {
+    fn as_span(&self) -> Span {
+        self.braces.span
+    }
 }
 
 impl<T: Parse> Braces<T> {

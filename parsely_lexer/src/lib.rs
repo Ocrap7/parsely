@@ -447,7 +447,7 @@ impl Lexer {
         let float_ind = slice
             .iter()
             .position(|c| {
-                let res = !c.is_ascii_digit() && *c != '.' || dotted;
+                let res = !c.is_ascii_digit() && *c != '.' || *c == '.' && dotted;
 
                 if *c == '.' {
                     dotted = true
@@ -469,6 +469,7 @@ impl Lexer {
                 .filter(|c| if let ['.', '.'] = c { true } else { false })
                 .is_none()
         {
+            println!("{float_slice:?}");
             let token = Some(Float::from_span_start(float_slice, self.make_position()));
 
             self.index += float_slice.len();
@@ -777,12 +778,14 @@ impl Lexer {
             ('=', _, _) => Some(Assign::from_span_start(self.make_position())),
             ('.', Some('.'), Some('=')) => Some(RangeEq::from_span_start(self.make_position())),
             ('.', Some('.'), _) => Some(tokens::Range::from_span_start(self.make_position())),
+            ('.', Some('*'), _) => Some(tokens::DotStar::from_span_start(self.make_position())),
             ('.', _, _) => Some(Dot::from_span_start(self.make_position())),
             ('>', Some('>'), Some('=')) => {
                 Some(RightShiftEq::from_span_start(self.make_position()))
             }
             ('>', Some('>'), _) => Some(RightShift::from_span_start(self.make_position())),
             ('>', Some('='), _) => Some(GtEq::from_span_start(self.make_position())),
+            ('!', Some('>'), _) => Some(LtEq::from_span_start(self.make_position())),
             ('>', _, _) => Some(Gt::from_span_start(self.make_position())),
             ('<', Some('<'), Some('=')) => Some(LeftShiftEq::from_span_start(self.make_position())),
             ('<', Some('<'), _) => Some(LeftShift::from_span_start(self.make_position())),
@@ -790,6 +793,7 @@ impl Lexer {
             ('|', Some('='), _) => Some(OrEq::from_span_start(self.make_position())),
             ('|', _, _) => Some(Or::from_span_start(self.make_position())),
             ('<', Some('='), _) => Some(LtEq::from_span_start(self.make_position())),
+            ('!', Some('<'), _) => Some(GtEq::from_span_start(self.make_position())),
             ('<', _, _) => Some(Lt::from_span_start(self.make_position())),
             ('-', Some('='), _) => Some(MinusEq::from_span_start(self.make_position())),
             ('-', _, _) => Some(Minus::from_span_start(self.make_position())),

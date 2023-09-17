@@ -63,6 +63,7 @@ impl_token_parse! {
     Arrow,
     Eq,
     Dot,
+    DotStar,
     Gt,
     GtEq,
     LeftShift,

@@ -18,10 +18,10 @@ use tower_lsp::jsonrpc::{Error, ErrorCode, Result};
 use tower_lsp::{lsp_types::*, LanguageServer};
 use tower_lsp::{Client, LspService, Server};
 
+mod goto;
 mod hover;
 mod semantic_tokens;
 mod signature;
-mod goto;
 
 pub struct Backend {
     documents: RwLock<HashMap<Url, (Module, Program)>>,
@@ -173,7 +173,7 @@ impl LanguageServer for Backend {
     async fn goto_definition(
         &self,
         params: GotoDefinitionParams,
-    ) -> Result<Option<GotoDefinitionResponse>>  {
+    ) -> Result<Option<GotoDefinitionResponse>> {
         Ok(None)
     }
 

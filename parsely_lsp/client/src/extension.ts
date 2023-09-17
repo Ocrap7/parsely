@@ -33,7 +33,7 @@ import {
     TransportKind,
 } from 'vscode-languageclient/node'
 import { getVSCodeDownloadUrl } from '@vscode/test-electron/out/util'
-import { editor } from './test/helper'
+// import { editor } from './test/helper'
 
 let client: LanguageClient
 

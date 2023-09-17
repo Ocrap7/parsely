@@ -7,6 +7,10 @@ use std::{
 
 use clap::Parser;
 use parsely_diagnostics::{Diagnostic, DiagnosticFmt, DiagnosticLevel, DiagnosticModuleFmt};
+use parsely_gen::{
+    llvm_codegen::{new_context, LlvmCodegen},
+    visitor::Visitor,
+};
 // use parsely_gen_asm::{module::Module, pack::Pack};
 use parsely_lexer::{Lexer, Span};
 use parsely_parser::program::Program;
@@ -133,6 +137,25 @@ fn compile_file(input: impl AsRef<Path>, output: impl AsRef<Path>) -> io::Result
     let dmd = DiagnosticModuleFmt(&diagnostics, &program);
     println!("{dmd}");
 
+    let mut output_file = File::create(&output)?;
+    write!(output_file, "{:#?}", program.items)?;
+
+    let mut p = parsely_gen::resolve::DeclarationResolver::new("mymod");
+    p.visit_program(&program);
+
+    let mut ires = p.to_interface_resolve();
+    ires.visit_program(&program);
+
+    let mut ty_res = ires.to_type_resolver();
+    ty_res.visit_program(&program);
+
+    println!("{:#?}", ty_res);
+
+    let ctx = new_context();
+    let codegen = LlvmCodegen::new(ty_res, &ctx);
+    codegen.gen_program(&program);
+    let module = codegen.finish();
+
     // println!("{:#?}", pack);
 
     // let module = Module::run_new(
@@ -146,9 +169,9 @@ fn compile_file(input: impl AsRef<Path>, output: impl AsRef<Path>) -> io::Result
     //     diagnostics,
     // )
     // .unwrap();
+    let mut output_file = File::create(output.as_ref().with_extension("ll"))?;
+    write!(output_file, "{}", module)?;
 
-    let mut output_file = File::create(&output)?;
-    write!(output_file, "{:#?}", program.items)?;
     // output_file.wri;
 
     Ok(((), program))

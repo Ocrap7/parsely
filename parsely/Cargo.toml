@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 parsely-lexer = { path = "../parsely_lexer" }
 parsely-parser = { path = "../parsely_parser_failsafe" }
-# parsely-gen-asm = { path = "../parsely_gen_asm" }
+parsely-gen = { path = "../parsely_gen" }
 parsely-diagnostics = { path = "../parsely_diagnostics" }
 
 clap = { version = "4.3.21", features = ["derive"] }

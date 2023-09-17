@@ -126,6 +126,38 @@ pub struct Pattern {
     pub kind: PatternKind,
 }
 
+impl Pattern {
+    pub fn expect_ident(&self) -> &tokens::Ident {
+        match &self.kind {
+            PatternKind::Ident(id) => id,
+            _ => panic!("Expected ident!"),
+        }
+    }
+
+    pub fn visit_idents(&self, f: &mut impl FnMut(&tokens::Ident, &Pattern)) {
+        match &self.kind {
+            PatternKind::Ident(ident) => f(ident, self),
+            PatternKind::Array(arr) => {
+                for e in arr.value.iter() {
+                    e.visit_idents(f)
+                }
+            }
+            PatternKind::Tuple(arr) => {
+                for e in arr.value.iter() {
+                    e.visit_idents(f)
+                }
+            }
+            PatternKind::Or(arr) => {
+                for e in arr.iter() {
+                    e.visit_idents(f)
+                }
+            }
+            PatternKind::UnionVarient(_, _, Some(pat)) => pat.1.visit_idents(f),
+            _ => (),
+        }
+    }
+}
+
 impl AsSpan for Pattern {
     fn as_span(&self) -> parsely_lexer::Span {
         self.kind.as_span()
@@ -358,6 +390,7 @@ impl AsSpan for FunctionBinding {
 #[derive(Debug, Clone)]
 pub struct ValueBinding {
     pub let_tok: Tok![let],
+
     pub mut_tok: Option<Tok![mut]>,
     pub pattern: Pattern,
     pub ty_annotation: Option<(Tok![:], Box<Type>)>,
@@ -889,7 +922,6 @@ impl Parse for Continue {
 
 #[derive(Debug, Clone)]
 pub struct Module {
-    pub id: NodeId,
     pub mod_tok: Tok![module],
     pub ident: Option<tokens::Ident>,
     pub parameters: Option<Parameters>,
@@ -911,8 +943,6 @@ impl AsSpan for Module {
 
 impl Parse for Module {
     fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
-        let id = stream.next_id();
-
         let mod_tok = simple_attempt!(stream => module);
 
         let ident = if let Ok(Token::Ident(i)) = stream.peek() {
@@ -943,7 +973,6 @@ impl Parse for Module {
         let semi_tok = simple_attempt!(stream => [;]);
 
         Ok(Module {
-            id,
             mod_tok,
             ident,
             parameters,

@@ -157,14 +157,12 @@ impl Type {
                         kind,
                     }
                 } else {
-                    let kind = TypeKind::Slice(
-                        Brackets {
-                            brackets: Bracket {
-                                span: open.join(*close),
-                            },
-                            value: Box::new((has_mut, *base)),
+                    let kind = TypeKind::Slice(Brackets {
+                        brackets: Bracket {
+                            span: open.join(*close),
                         },
-                    );
+                        value: Box::new((has_mut, *base)),
+                    });
 
                     Type {
                         id: stream.next_id(),

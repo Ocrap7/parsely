@@ -9,7 +9,7 @@ use crate::{
     item::{Item, Pattern},
     simple_attempt,
     types::Type,
-    Brackets, NodeId, Parens, Parse, ParseStream, Punctuation,
+    Braces, Brackets, NodeId, Parens, Parse, ParseStream, Punctuation,
 };
 
 #[derive(Debug, Clone)]
@@ -142,10 +142,14 @@ pub enum ExpressionKind {
     Literal(Literal),
     /// std.heap.List
     Path(Path),
+    /// foo = 4
+    Assign(Assign),
     /// [1, 2, 3]
     ArrayInit(ArrayInit),
     /// (10, false, "Hello")
     TupleInit(TupleInit),
+    /// { name: value }
+    StructInit(StructInit),
 
     /// (2 + 3)
     Parens(Parens<Expression>),
@@ -186,10 +190,12 @@ impl AsSpan for Expression {
             ExpressionKind::Literal(l) => l.as_span(),
             ExpressionKind::BinOp(b) => b.as_span(),
             ExpressionKind::Path(i) => i.as_span(),
+            ExpressionKind::Assign(i) => i.as_span(),
             ExpressionKind::Parens(i) => i.value.as_span(),
             ExpressionKind::Index(i, ind) => i.as_span().join(ind.as_span()),
             ExpressionKind::ArrayInit(i) => i.as_span(),
             ExpressionKind::TupleInit(i) => i.as_span(),
+            ExpressionKind::StructInit(i) => i.as_span(),
             ExpressionKind::AddrOf(i) => i.as_span(),
             ExpressionKind::Deref(i) => i.as_span(),
             ExpressionKind::Call(i) => i.as_span(),
@@ -253,11 +259,30 @@ impl Expression {
                 bracket: tokens::GroupBracket::Bracket,
                 ..
             })) if !stream.in_ty_ctx() => stream.parse().map(ExpressionKind::ArrayInit)?,
-            // Ok(Token::Group(tokens::Group {
-            //     bracket: tokens::GroupBracket::Paren,
-            //     ..
-            // })) => stream.parse().map(ExpressionKind::TupleInit)?,
-            Ok(Token::Ident(_)) => stream.parse().map(ExpressionKind::Path)?,
+            Ok(Token::Group(tokens::Group {
+                bracket: tokens::GroupBracket::Brace,
+                ..
+            })) if !stream.in_ty_ctx() => ExpressionKind::StructInit(StructInit {
+                ty: None,
+                elements: stream.parse()?,
+            }),
+            Ok(Token::Ident(_)) => {
+                let path = stream.parse()?;
+
+                // If braces follow, this is a struct initializer
+                if let Ok(Token::Group(Group {
+                    bracket: GroupBracket::Brace,
+                    ..
+                })) = stream.peek()
+                {
+                    ExpressionKind::StructInit(StructInit {
+                        ty: Some(path),
+                        elements: stream.parse()?,
+                    })
+                } else {
+                    ExpressionKind::Path(path)
+                }
+            }
             Ok(Tok![enum if]) => stream.parse().map(ExpressionKind::If)?,
             Ok(Tok![enum loop]) => stream.parse().map(ExpressionKind::Loop)?,
             Ok(Tok![enum match]) => stream.parse().map(ExpressionKind::Match)?,
@@ -299,7 +324,41 @@ impl Expression {
 
 impl Parse for Expression {
     fn parse(stream: &'_ mut ParseStream) -> Result<Self> {
-        BinOp::parse_binop(stream, 0)
+        let binop = BinOp::parse_binop(stream, 0);
+
+        println!("S{:?}", stream.peek());
+        let expr = match (stream.peek(), binop) {
+            (
+                Ok(
+                    Tok![enum =]
+                    | Tok![enum +=]
+                    | Tok![enum -=]
+                    | Tok![enum *=]
+                    | Tok![enum /=]
+                    | Tok![enum %=]
+                    | Tok![enum <<=]
+                    | Tok![enum >>=]
+                    | Tok![enum &=]
+                    | Tok![enum ^=]
+                    | Tok![enum |=],
+                ),
+                Ok(left),
+            ) => {
+                let id = stream.next_id();
+
+                Ok(Expression {
+                    id,
+                    kind: ExpressionKind::Assign(Assign {
+                        left: Box::new(left),
+                        op: stream.next()?,
+                        right: stream.parse()?,
+                    }),
+                })
+            }
+            (_, binop) => binop,
+        };
+
+        expr
     }
 }
 
@@ -362,11 +421,14 @@ impl BinOp {
                     kind: ExpressionKind::Deref(addr),
                 }
             }
-            _ => Expression::parse_primary_expression(stream)?,
+            _ => {
+                let lhs = Expression::parse_primary_expression(stream)?;
+
+                lhs
+            }
         };
 
         while stream.has_next() && !stream.peek_eof() {
-            let id = stream.next_id();
             let op = stream.peek().cloned().expect("stream should have token");
 
             match op {
@@ -376,6 +438,7 @@ impl BinOp {
                     close,
                     ..
                 }) => {
+                    let id = stream.next_id();
                     let span = open.join(close);
                     if let Ok(ind) = stream.parse() {
                         left = Expression {
@@ -404,6 +467,7 @@ impl BinOp {
                     bracket: GroupBracket::Paren,
                     ..
                 }) => {
+                    let id = stream.next_id();
                     left = Expression {
                         id,
                         kind: ExpressionKind::Call(Call {
@@ -423,6 +487,8 @@ impl BinOp {
                 break;
             }
 
+            let id = stream.next_id();
+
             let op = stream.next().expect("operator should exist");
 
             let right = BinOp::parse_binop(stream, prec).expect("This should never error");
@@ -437,7 +503,41 @@ impl BinOp {
             };
         }
 
+        while stream.has_next() && !stream.peek_eof() {
+            let op = stream.peek().cloned().expect("stream should have token");
+
+            let prec = BinOp::post_precedence(&op);
+
+            if prec <= last_prec || prec == 0 {
+                break;
+            }
+
+            let id = stream.next_id();
+
+            let op = stream.next().expect("operator should exist");
+
+            match op {
+                Tok![enum ds as op] => {
+                    left = Expression {
+                        id,
+                        kind: ExpressionKind::Deref(Deref {
+                            deref_tok: op,
+                            expr: Box::new(left),
+                        }),
+                    };
+                }
+                _ => (),
+            }
+        }
+
         Ok(left)
+    }
+
+    fn post_precedence(op: &tokens::Token) -> usize {
+        match op {
+            tokens::Tok![enum ds] => 140,
+            _ => 0
+        }
     }
 
     fn precedence(op: &tokens::Token) -> usize {
@@ -456,24 +556,24 @@ impl BinOp {
             tokens::Tok![enum &&] => 50,
             tokens::Tok![enum ||] => 40,
             tokens::Tok![enum ..] | tokens::Tok![enum ..=] => 45,
-            tokens::Tok![enum =]
-            | tokens::Tok![enum +=]
-            | tokens::Tok![enum -=]
-            | tokens::Tok![enum *=]
-            | tokens::Tok![enum /=]
-            | tokens::Tok![enum %=]
-            | tokens::Tok![enum <<=]
-            | tokens::Tok![enum >>=]
-            | tokens::Tok![enum &=]
-            | tokens::Tok![enum ^=]
-            | tokens::Tok![enum |=] => 30,
+            // tokens::Tok![enum =]
+            // | tokens::Tok![enum +=]
+            // | tokens::Tok![enum -=]
+            // | tokens::Tok![enum *=]
+            // | tokens::Tok![enum /=]
+            // | tokens::Tok![enum %=]
+            // | tokens::Tok![enum <<=]
+            // | tokens::Tok![enum >>=]
+            // | tokens::Tok![enum &=]
+            // | tokens::Tok![enum ^=]
+            // | tokens::Tok![enum |=] => 30,
             _ => 0,
         }
     }
 
     fn pre_precedence(op: &tokens::Token) -> usize {
         match op {
-            Tok![enum &] | Tok![enum *] => 140,
+            Tok![enum &] => 140,
             _ => 0,
         }
     }
@@ -518,6 +618,39 @@ impl Parse for TupleInit {
 }
 
 #[derive(Debug, Clone)]
+pub struct StructInit {
+    pub ty: Option<Path>,
+    pub elements: Braces<Punctuation<StructInitField, Tok![,]>>,
+}
+
+impl AsSpan for StructInit {
+    fn as_span(&self) -> Span {
+        self.ty.as_span().join_saturated(self.elements.as_span())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StructInitField {
+    pub name: tokens::Ident,
+    pub init: Option<(Tok![:], Box<Expression>)>,
+}
+
+impl Parse for StructInitField {
+    fn parse(stream: &'_ mut ParseStream) -> Result<Self> {
+        Ok(StructInitField {
+            name: simple_attempt!(stream => [ident]),
+            init: {
+                if let Ok(Tok![enum :]) = stream.peek() {
+                    Some((stream.parse()?, stream.parse()?))
+                } else {
+                    None
+                }
+            },
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct AddrOf {
     pub ref_tok: Tok![&],
     pub mut_tok: Option<Tok![mut]>,
@@ -548,13 +681,49 @@ impl Parse for AddrOf {
 
 #[derive(Debug, Clone)]
 pub struct Deref {
-    pub deref_tok: Tok![*],
     pub expr: Box<Expression>,
+    pub deref_tok: Tok![ds],
 }
 
 impl AsSpan for Deref {
     fn as_span(&self) -> Span {
         self.deref_tok.as_span().join(self.expr.as_span())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Assign {
+    pub left: Box<Expression>,
+    pub op: Token,
+    pub right: Box<Expression>,
+}
+
+impl Assign {
+    /// Get the binary equivelent of the operator
+    ///
+    /// >>= becomes >>
+    pub fn bin_op_token(&self) -> Token {
+        match self.op {
+            Tok![enum +=] => Token::Plus(tokens::Plus(self.op.as_span())),
+            Tok![enum -=] => Token::Minus(tokens::Minus(self.op.as_span())),
+            Tok![enum *=] => Token::Star(tokens::Star(self.op.as_span())),
+            Tok![enum /=] => Token::Slash(tokens::Slash(self.op.as_span())),
+            Tok![enum %=] => Token::Rem(tokens::Rem(self.op.as_span())),
+
+            Tok![enum <<=] => Token::LeftShift(tokens::LeftShift(self.op.as_span())),
+            Tok![enum >>=] => Token::RightShift(tokens::RightShift(self.op.as_span())),
+
+            Tok![enum &=] => Token::And(tokens::And(self.op.as_span())),
+            Tok![enum |=] => Token::Or(tokens::Or(self.op.as_span())),
+            Tok![enum ^=] => Token::Xor(tokens::Xor(self.op.as_span())),
+            _ => panic!(),
+        }
+    }
+}
+
+impl AsSpan for Assign {
+    fn as_span(&self) -> Span {
+        Span::join_all([self.left.as_span(), self.op.as_span(), self.right.as_span()])
     }
 }
 
@@ -631,13 +800,14 @@ impl Parse for If {
         let expr = stream.parse()?;
         let then_tok = simple_attempt!(stream => then);
         let body = crate::parse_vec_to_one_of2::<_, Tok![;], Tok![else]>(stream)?;
-        let semi_tok = simple_attempt!(stream => [;]);
 
         let else_clause = if let Ok(Tok![enum else]) = stream.peek() {
             Some(stream.parse()?)
         } else {
             None
         };
+
+        let semi_tok = simple_attempt!(stream => [;]);
 
         Ok(If {
             if_tok,

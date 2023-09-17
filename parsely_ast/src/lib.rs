@@ -9,25 +9,18 @@ pub struct Item {
     pub kind: ItemKind,
 }
 
-pub enum ItemKind {
-    
-}
+pub enum ItemKind {}
 
 pub struct Expr {
     pub id: NodeId,
     pub span: Span,
-    pub kind: ExprKind
+    pub kind: ExprKind,
 }
 
-pub enum ExprKind {
+pub enum ExprKind {}
 
-}
-
-pub struct Lit {
-     
-}
+pub struct Lit {}
 
 pub enum LitKind {
     Bool,
-
 }

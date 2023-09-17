@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="EMPTY_MODULE" version="4">
+  <component name="NewModuleRootManager">
+    <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/parsely/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/parsely_ast/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/parsely_diagnostics/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/parsely_gen/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/parsely_lexer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/parsely_lsp/lsp_server/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/parsely_macros/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/parsely_parser_failsafe/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/target" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

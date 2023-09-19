@@ -1,15 +1,20 @@
-use std::{cell::RefCell, collections::HashMap};
+use std::{
+    cell::{Ref, RefCell},
+    collections::HashMap,
+};
 
 use inkwell::{
     basic_block::BasicBlock,
     builder::{self, Builder},
     context::Context,
     module::{Linkage, Module},
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine},
-    types::{AnyType, AnyTypeEnum, BasicType, BasicTypeEnum},
+    targets::{
+        CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
+    },
+    types::{AnyType, AnyTypeEnum, BasicMetadataTypeEnum, BasicType, BasicTypeEnum},
     values::{
-        AnyValueEnum, ArrayValue, BasicValue, BasicValueEnum, FloatValue, FunctionValue, IntValue,
-        PointerValue, StructValue, VectorValue,
+        AnyValueEnum, ArrayValue, BasicMetadataValueEnum, BasicValue, BasicValueEnum, FloatValue,
+        FunctionValue, IntValue, PointerValue, StructValue, VectorValue,
     },
     AddressSpace, FloatPredicate, IntPredicate,
 };
@@ -35,11 +40,12 @@ pub struct FunctionContext<'ctx> {
     basic_block: BasicBlock<'ctx>,
     builder: Builder<'ctx>,
     locals: HashMap<String, PointerValue<'ctx>>,
+    id: NodeId,
 }
 
 pub struct CommonContext<'ctx> {
-    type_hint: Option<(AnyTypeEnum<'ctx>, NodeId)>,
-    implicit_type: Option<AnyTypeEnum<'ctx>>,
+    type_hint: Option<(AnyTypeEnum<'ctx>, Type)>,
+    size_hint: Option<usize>,
     is_ref: bool,
 }
 
@@ -94,7 +100,7 @@ impl<'ctx> LlvmCodegen<'ctx> {
             fn_ctx: RefCell::new(None),
             common_ctx: RefCell::new(CommonContext {
                 type_hint: None,
-                implicit_type: None,
+                size_hint: None,
                 is_ref: false,
             }),
         }
@@ -134,7 +140,21 @@ impl<'ctx> LlvmCodegen<'ctx> {
             .collect()
     }
 
-    pub fn finish(self) -> String {
+    pub fn finish(self, path: impl AsRef<std::path::Path>) -> String {
+        let path = path.as_ref();
+
+        self.module
+            .verify()
+            .inspect_err(|_| {
+                println!("{}", self.module.to_string());
+            })
+            .unwrap();
+
+        // self.target_machine.write_to_file(&self.module, FileType::Object, &path.with_extension("o")).unwrap();
+        self.target_machine
+            .write_to_file(&self.module, FileType::Assembly, &path.with_extension("s"))
+            .unwrap();
+
         self.module.to_string()
     }
 }
@@ -156,6 +176,24 @@ impl<'ctx> LlvmCodegen<'ctx> {
 // }
 
 impl<'ctx> LlvmCodegen<'ctx> {
+    fn builder(&self) -> Ref<Builder<'ctx>> {
+        Ref::map(self.fn_ctx.borrow(), |ctx| &ctx.as_ref().unwrap().builder)
+    }
+
+    fn with_ref<U>(&self, f: impl Fn(&Self) -> U, is_ref: bool) -> U {
+        let old = {
+            let mut cctx = self.common_ctx.borrow_mut();
+            std::mem::replace(&mut cctx.is_ref, is_ref)
+        };
+
+        let val = f(self);
+
+        let mut cctx = self.common_ctx.borrow_mut();
+        let _ = std::mem::replace(&mut cctx.is_ref, old);
+
+        val
+    }
+
     pub fn gen_program(&self, program: &Program) {
         for (_, ty) in &self.node_to_type {
             match &ty.kind {
@@ -204,6 +242,40 @@ impl<'ctx> LlvmCodegen<'ctx> {
                 self.gen_assign(assign, id);
                 None
             }
+            item::ItemKind::Return(ret) => {
+                if let Some(expr) = &ret.expr {
+                    let ret_ty = {
+                        let fn_ctx = self.fn_ctx.borrow();
+                        let fn_ctx = fn_ctx.as_ref().unwrap();
+
+                        let Some(Type {kind: TypeKind::Function {return_ty, ..}}) = self.node_to_type.get(&fn_ctx.id) else {
+                            panic!("Expected function type")
+                        };
+
+                        (
+                            fn_ctx
+                                .function
+                                .get_type()
+                                .get_return_type()
+                                .unwrap()
+                                .as_any_type_enum(),
+                            return_ty.as_ref().clone(),
+                        )
+                    };
+
+                    let llvm_ret_ty = self.common_ctx.borrow_mut().type_hint.replace(ret_ty);
+
+                    let expr = self.gen_expr(expr);
+
+                    let _ =
+                        std::mem::replace(&mut self.common_ctx.borrow_mut().type_hint, llvm_ret_ty);
+
+                    self.builder().build_return(Some(&expr)).unwrap();
+                }
+
+                // self.gen_assign(assign, id);
+                None
+            }
             _ => unimplemented!(),
         }
     }
@@ -222,7 +294,7 @@ impl<'ctx> LlvmCodegen<'ctx> {
 
         let ret_ty_llvm = self.gen_ty(return_ty);
 
-        let params: Vec<_> = params
+        let params: Vec<BasicMetadataTypeEnum<'ctx>> = params
             .iter()
             .map(|(_, ty)| {
                 self.gen_ty(ty)
@@ -254,14 +326,33 @@ impl<'ctx> LlvmCodegen<'ctx> {
         let bb = self.context.append_basic_block(function, "entry");
 
         let builder = self.context.create_builder();
+
+        builder.position_at_end(alloca_bb);
+
+        let local_params: HashMap<_, _> = params
+            .iter()
+            .zip(func.parameters.value.iter())
+            .map(|bv| {
+                let bv_ty: BasicTypeEnum = (*bv.0).try_into().unwrap();
+                let ptr = builder.build_alloca(bv_ty, EMPTY_STR).unwrap();
+
+                (bv.1.pattern.expect_ident().value.to_string(), ptr)
+            })
+            .collect();
+
         builder.position_at_end(bb);
+
+        for ((_, ptr), value) in local_params.iter().zip(function.get_param_iter()) {
+            builder.build_store(*ptr, value).unwrap();
+        }
 
         let ctx = FunctionContext {
             function,
             alloca_block: alloca_bb,
             basic_block: bb.clone(),
             builder,
-            locals: HashMap::new(),
+            locals: local_params,
+            id: item.id.clone(),
         };
 
         let _ = self.fn_ctx.borrow_mut().insert(ctx);
@@ -272,6 +363,17 @@ impl<'ctx> LlvmCodegen<'ctx> {
 
         ctx.builder.position_at_end(ctx.alloca_block);
         ctx.builder.build_unconditional_branch(bb).unwrap();
+
+        if let Some(item::Item {
+            kind: item::ItemKind::Return(_),
+            ..
+        }) = func.value.last()
+        {
+            
+        }
+
+        ctx.builder.position_at_end(ctx.basic_block);
+        ctx.builder.build_return(None).unwrap();
     }
 
     fn gen_local(&self, var: &item::ValueBinding, item: &item::Item) {
@@ -312,8 +414,8 @@ impl<'ctx> LlvmCodegen<'ctx> {
 
         {
             let mut cctx = self.common_ctx.borrow_mut();
-            cctx.type_hint = Some((llvm_ty.as_any_type_enum(), var.pattern.id.clone()));
-            cctx.implicit_type = implicit_ty;
+            cctx.type_hint = Some((llvm_ty.as_any_type_enum(), ty.clone()));
+            // cctx.implicit_type = implicit_ty;
         }
 
         if let Some((_, init)) = &var.init {
@@ -328,7 +430,6 @@ impl<'ctx> LlvmCodegen<'ctx> {
         {
             let mut cctx = self.common_ctx.borrow_mut();
             cctx.type_hint = None;
-            cctx.implicit_type = None;
         }
     }
 
@@ -352,14 +453,15 @@ impl<'ctx> LlvmCodegen<'ctx> {
         let implicit = {
             let cctx = self.common_ctx.borrow();
 
-            cctx.implicit_type.map(|ty| {
-                let cty = cctx
-                    .type_hint
-                    .expect("This should be some if implicit_ty is some");
-                let full_ty = self.node_to_type.get(&cty.1).expect("Expected full type");
+            // cctx.type_hint.map(||)
+            // cctx.implicit_type.map(|ty| {
+            //     let cty = cctx
+            //         .type_hint
+            //         .expect("This should be some if implicit_ty is some");
+            //     let full_ty = self.node_to_type.get(&cty.1).expect("Expected full type");
 
-                (ty, full_ty.clone())
-            })
+            //     (ty, full_ty.clone())
+            // })
         };
 
         let expr = match &expr.kind {
@@ -375,16 +477,13 @@ impl<'ctx> LlvmCodegen<'ctx> {
                     let (ty, signed) =
                        cctx
                         .type_hint
-                        .and_then(|c| {
-                            let Some(Type { kind: TypeKind::Integer {signed, ..} | TypeKind::Optional { base: box Type {kind: TypeKind::Integer { signed, .. }} } }) = self.node_to_type.get(&c.1) else {
+                        .as_ref()
+                        .and_then(|(llvm_ty, ty)| {
+                            let Type { kind: TypeKind::Integer {signed, ..} | TypeKind::Optional { base: box Type {kind: TypeKind::Integer { signed, .. }} } } = ty else {
                                 panic!("Expeteced int type")
                             };
 
-                            let nty = if let Some((ty, _)) = implicit {
-                                ty.try_into().ok()
-                            } else {
-                                c.0.try_into().ok()
-                            };
+                            let nty = (*llvm_ty).try_into().ok();
 
 
                             nty.map(|nty| (nty, *signed))
@@ -400,13 +499,8 @@ impl<'ctx> LlvmCodegen<'ctx> {
 
                     let ty = cctx
                         .type_hint
-                        .and_then(|c| {
-                            if let Some((ty, _)) = implicit {
-                                ty.try_into().ok()
-                            } else {
-                                c.0.try_into().ok()
-                            }
-                        })
+                        .as_ref()
+                        .and_then(|(llvm_ty, _)| (*llvm_ty).try_into().ok())
                         .unwrap_or_else(|| self.context.f64_type());
 
                     ty.const_float(float.value.value).into()
@@ -433,13 +527,12 @@ impl<'ctx> LlvmCodegen<'ctx> {
                 Literal::None(_) => {
                     let cctx = self.common_ctx.borrow();
 
-                    let (_, id) = cctx.type_hint.expect("Expected a type hint");
+                    let (_, ty) = cctx.type_hint.as_ref().expect("Expected a type hint");
 
-                    let Some(ty @ Type { kind: TypeKind::Optional {base} }) = self.node_to_type.get(&id) else {
+                    let ty @ Type { kind: TypeKind::Optional {base} } = ty else {
                         panic!("Expeteced optional type")
                     };
 
-                    // let llvm_ty = self.gen_ty(ty);
                     let llvm_base: BasicTypeEnum =
                         self.gen_ty(base).try_into().expect("Expect basic type");
 
@@ -553,9 +646,6 @@ impl<'ctx> LlvmCodegen<'ctx> {
                 }
             }
             ExpressionKind::ArrayInit(array) => {
-
-                
-
                 let ty = self
                     .node_to_type
                     .get(&expr.id)
@@ -572,11 +662,14 @@ impl<'ctx> LlvmCodegen<'ctx> {
                     .try_into()
                     .expect("Expected basic type for array init base");
 
-                {
-                    // let cctx = self.common_ctx.borrow();
-                    // let old_hint = cctx.type_hint.replace((llvm_base_ty))
+                let old_ty_hint = {
+                    let mut cctx = self.common_ctx.borrow_mut();
+                    let old_hint = cctx
+                        .type_hint
+                        .replace((llvm_base_ty.as_any_type_enum(), base_ty.clone()));
 
-                }
+                    old_hint
+                };
 
                 let array_value = match llvm_base_ty {
                     BasicTypeEnum::ArrayType(array_ty) => {
@@ -617,7 +710,87 @@ impl<'ctx> LlvmCodegen<'ctx> {
                     }
                 };
 
+                {
+                    let mut cctx = self.common_ctx.borrow_mut();
+                    cctx.type_hint = old_ty_hint;
+                }
+
                 array_value.into()
+            }
+            ExpressionKind::Index(base, ind) => {
+                let ptr_int = self.context.ptr_sized_int_type(&self.target_data, None);
+
+                let llvm_index = if let Some(ty) = self.node_to_type.get(&ind.value.id) {
+                    let value = self.with_ref(|res| res.gen_expr(&ind.value), false);
+
+                    match &ty.kind {
+                        TypeKind::Integer {
+                            signed: false,
+                            size: Some(size),
+                        } if size.get() < self.target_data.get_pointer_byte_size(None) * 8 => {
+                            let value = self
+                                .builder()
+                                .build_int_z_extend(value.into_int_value(), ptr_int, EMPTY_STR)
+                                .unwrap();
+
+                            value
+                        }
+                        TypeKind::Integer {
+                            signed: false,
+                            size: Some(size),
+                        } if size.get() > self.target_data.get_pointer_byte_size(None) * 8 => {
+                            let value = self
+                                .builder()
+                                .build_int_truncate(value.into_int_value(), ptr_int, EMPTY_STR)
+                                .unwrap();
+
+                            value
+                        }
+                        TypeKind::Integer { signed: false, .. } => value.into_int_value(),
+                        _ => panic!("Expected unsigned integral type"),
+                    }
+                } else {
+                    self.gen_expr(&ind.value).into_int_value()
+                };
+
+                let ty = self
+                    .node_to_type
+                    .get(&base.id)
+                    .expect("Expected type for node");
+                let llvm_ty: BasicTypeEnum =
+                    self.gen_ty(ty).try_into().expect("Expected basic type");
+
+                let ptr = self.with_ref(|res| res.gen_expr(base), true);
+
+                let result = unsafe {
+                    self.builder().build_in_bounds_gep(
+                        llvm_ty,
+                        ptr.into_pointer_value(),
+                        &[ptr_int.const_zero(), llvm_index],
+                        EMPTY_STR,
+                    )
+                }
+                .unwrap();
+
+                if self.common_ctx.borrow().is_ref {
+                    result.into()
+                } else {
+                    let base_ty = self
+                        .node_to_type
+                        .get(&expr.id)
+                        .expect("Expected index type");
+                    let llvm_base_ty: BasicTypeEnum = self
+                        .gen_ty(base_ty)
+                        .try_into()
+                        .expect("Expected basic base type");
+
+                    debug_assert_eq!(base_ty, &ty.index_result());
+
+                    self.builder()
+                        .build_load(llvm_base_ty, result, EMPTY_STR)
+                        .unwrap()
+                        .into()
+                }
             }
             ExpressionKind::BinOp(binop) => {
                 self.gen_binop(&binop.left, &binop.right, &binop.op, &expr.id)
@@ -626,12 +799,14 @@ impl<'ctx> LlvmCodegen<'ctx> {
             _ => unimplemented!(),
         };
 
+        let cctx = self.common_ctx.borrow();
+
         if let Some((
             _,
             Type {
                 kind: TypeKind::Optional { .. },
             },
-        )) = implicit
+        )) = &cctx.type_hint
         {
             self.context
                 .const_struct(
@@ -665,7 +840,7 @@ impl<'ctx> LlvmCodegen<'ctx> {
         let llvm_base = self.gen_ty(&element_ty);
 
         // For type coercion
-        self.common_ctx.borrow_mut().type_hint = Some((llvm_base, assign.left.id.clone()));
+        self.common_ctx.borrow_mut().type_hint = Some((llvm_base, element_ty.clone()));
 
         let new_val = if let Tok![enum =] = &assign.op {
             self.gen_expr(&assign.right)
@@ -974,17 +1149,19 @@ impl<'ctx> LlvmCodegen<'ctx> {
                 llvm_base.ptr_type(AddressSpace::default()).into()
             }
             TypeKind::Array { base, size } => {
+                let size = size.expect("Size should be known");
+
                 let base_ty: BasicTypeEnum =
                     self.gen_ty(base).try_into().expect("Expected basic type!");
 
                 // base_ty.
                 let array_ty = match base_ty {
-                    BasicTypeEnum::ArrayType(arr) => arr.array_type(*size as u32),
-                    BasicTypeEnum::IntType(arr) => arr.array_type(*size as u32),
-                    BasicTypeEnum::FloatType(arr) => arr.array_type(*size as u32),
-                    BasicTypeEnum::PointerType(arr) => arr.array_type(*size as u32),
-                    BasicTypeEnum::StructType(arr) => arr.array_type(*size as u32),
-                    BasicTypeEnum::VectorType(arr) => arr.array_type(*size as u32),
+                    BasicTypeEnum::ArrayType(arr) => arr.array_type(size as u32),
+                    BasicTypeEnum::IntType(arr) => arr.array_type(size as u32),
+                    BasicTypeEnum::FloatType(arr) => arr.array_type(size as u32),
+                    BasicTypeEnum::PointerType(arr) => arr.array_type(size as u32),
+                    BasicTypeEnum::StructType(arr) => arr.array_type(size as u32),
+                    BasicTypeEnum::VectorType(arr) => arr.array_type(size as u32),
                 };
 
                 array_ty.into()

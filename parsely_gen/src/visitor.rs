@@ -8,6 +8,9 @@ pub trait Visitor<T = ()> {
     fn visit_type_decl(&mut self, type_decl: &item::TypeAlias, item: &item::Item) {}
     fn visit_module_decl(&mut self, module: &item::Module, item: &item::Item) {}
     fn visit_import(&mut self, module: &item::Import, id: &NodeId) {}
+    // fn visit_return(&mut self, ret: &item::Return, id: &NodeId) {}
+    // fn visit_break(&mut self, brk: &item::Break, id: &NodeId) {}
+    // fn visit_continue(&mut self, cont: &item::Continue, id: &NodeId) {}
 
     fn visit_path(&mut self, path: &expression::Path, id: &NodeId) -> T {
         self.default_value()

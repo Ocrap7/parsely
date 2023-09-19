@@ -762,6 +762,7 @@ impl Lexer {
             ('/', Some('*'), _) => return self.block_comment(),
 
             // Punctuation
+            ('_', _, _) => Some(Underscore::from_span_start(self.make_position())),
             (';', _, _) => Some(Semi::from_span_start(self.make_position())),
             ('?', _, _) => Some(Question::from_span_start(self.make_position())),
             (':', _, _) => Some(Colon::from_span_start(self.make_position())),

@@ -17,6 +17,7 @@ pub struct Type {
 
 #[derive(Debug, Clone)]
 pub enum TypeKind {
+    Infer(Tok![_]),
     Type(Tok![type]),
     Named(Path),
     Ref(Box<Type>, RefPart),
@@ -31,6 +32,7 @@ pub enum TypeKind {
 impl AsSpan for TypeKind {
     fn as_span(&self) -> parsely_lexer::Span {
         match self {
+            TypeKind::Infer(n) => n.as_span(),
             TypeKind::Type(n) => n.as_span(),
             TypeKind::Named(n) => n.as_span(),
             TypeKind::Ref(a, b) => a.as_span().join(b.as_span()),
@@ -79,7 +81,32 @@ impl Parse for RefPart {
 pub struct ArrayInner {
     pub ty: Box<Type>,
     pub colon: Tok![:],
-    pub size: Box<Expression>,
+    pub size: ArraySize,
+}
+
+#[derive(Debug, Clone)]
+pub enum ArraySize {
+    Infer(Tok![_]),
+    Size(Box<Expression>),
+}
+
+impl Parse for ArraySize {
+    fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
+        if let Ok(Tok![enum _]) = stream.peek() {
+            stream.parse().map(ArraySize::Infer)
+        } else {
+            stream.parse().map(ArraySize::Size)
+        }
+    }
+}
+
+impl AsSpan for ArraySize {
+    fn as_span(&self) -> parsely_lexer::Span {
+        match self {
+            ArraySize::Infer(inf) => inf.as_span(),
+            ArraySize::Size(inf) => inf.as_span(),
+        }
+    }
 }
 
 impl Parse for ArrayInner {
@@ -95,6 +122,7 @@ impl Parse for ArrayInner {
 impl Parse for Type {
     fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
         let first = Type::parse_type(stream)?;
+        println!("{first:?}");
 
         if let Ok(Tok![enum *]) = stream.peek() {
             let kind = Punctuation::parse_first_with(stream, Some(first), Type::parse_type)
@@ -222,6 +250,14 @@ impl Type {
 impl Type {
     fn parse_primary(stream: &'_ mut crate::ParseStream) -> Result<Self> {
         match stream.peek()? {
+            Tok![enum _] => {
+                let kind = stream.parse().map(TypeKind::Infer)?;
+
+                Ok(Type {
+                    id: stream.next_id(),
+                    kind,
+                })
+            }
             Token::Type(_) => {
                 let kind = stream.parse().map(TypeKind::Type)?;
 

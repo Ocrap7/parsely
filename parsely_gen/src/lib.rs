@@ -1,4 +1,5 @@
 #![feature(box_patterns)]
+#![feature(result_option_inspect)]
 
 pub mod llvm_codegen;
 pub mod path;

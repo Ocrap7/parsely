@@ -3,9 +3,9 @@ use std::{collections::HashMap, sync::Arc};
 use parsely_lexer::Tok;
 // use parsely_lexer::tokens::Type;
 use parsely_parser::{
-    expression::Literal,
+    expression::{Expression, ExpressionKind, Literal},
     item::{Item, PatternKind, TypeBinding, UnionVarientKind},
-    types,
+    types::{self, ArraySize},
     // types::TypeKind,
     NodeId,
 };
@@ -373,6 +373,16 @@ impl Visitor for DeclarationResolver {
     fn visit_fn_decl(&mut self, function: &parsely_parser::item::FunctionBinding, item: &Item) {
         let path = self.declare_fn(&function.ident.value, &item.id, item.export_tok.is_some());
 
+        for param in function.parameters.value.iter() {
+            param.pattern.visit_idents(&mut |id, pat| {
+                println!("pAttern : {:?}", pat.id);
+                let path = self.declare_var(&id.value, &pat.id, item.export_tok.is_some());
+
+                self.node_to_path.insert(pat.id.clone(), path.clone());
+                self.path_to_node.insert(path, pat.id.clone());
+            });
+        }
+
         for item in &function.value {
             self.visit_item(item);
         }
@@ -439,6 +449,7 @@ impl InterfaceResolver {
 
             node_to_type: self.node_to_type,
             // node_to_value_type: HashMap::new(),
+            type_hint: None,
         }
     }
 }
@@ -459,6 +470,7 @@ impl Resolver for InterfaceResolver {
 
 fn convert_type(ty: &types::Type, resolver: &mut impl Resolver, map_path: bool) -> Type {
     match &ty.kind {
+        types::TypeKind::Infer(_) => Type::new_infer(),
         types::TypeKind::Named(path) => {
             match (path.segments.len(), path.segments.iter().next()) {
                 (1, Some(parsely_lexer::tokens::Ident { value, .. })) => {
@@ -524,11 +536,21 @@ fn convert_type(ty: &types::Type, resolver: &mut impl Resolver, map_path: bool) 
             }
         }
         types::TypeKind::Array(arr) => {
-            // Type {
-            //     kind: Type
-            // }
-            // self.visit_type(&arr.value.ty)
-            unimplemented!()
+            let size = match &arr.value.size {
+                ArraySize::Infer(_) => None,
+                ArraySize::Size(box Expression {
+                    kind: ExpressionKind::Literal(Literal::Int(val)),
+                    ..
+                }) => Some(val.value.value as usize),
+                _ => panic!(),
+            };
+
+            Type {
+                kind: TypeKind::Array {
+                    base: Box::new(convert_type(&arr.value.ty, resolver, map_path)),
+                    size,
+                },
+            }
         }
         types::TypeKind::Slice(arr) => Type {
             kind: TypeKind::Slice {
@@ -579,6 +601,11 @@ impl Visitor<Type> for InterfaceResolver {
         };
 
         self.env.push_segment(path.last());
+
+
+        for param in function.parameters.value.iter() {
+            self.visit_type(&param.ty);
+        }
 
         for item in &function.value {
             self.visit_item(item);
@@ -705,9 +732,21 @@ pub struct TypeResolver {
 
     pub node_to_type: HashMap<NodeId, Type>,
     // pub node_to_value_type: HashMap<NodeId, Type>,
+    type_hint: Option<Type>,
 }
 
 impl TypeResolver {
+    fn with_type_hint<U>(&mut self, f: impl Fn(&mut TypeResolver) -> U, ty: Type) -> (U, Type) {
+        let old_hint = self.type_hint.replace(ty);
+
+        let val = f(self);
+
+        let ty = self.type_hint.take().unwrap();
+        self.type_hint = old_hint;
+
+        (val, ty)
+    }
+
     fn ttt(&self, ty: *mut Type) {
         match unsafe { &mut (*ty).kind } {
             TypeKind::Tbd { ref id } => {
@@ -796,7 +835,7 @@ impl Visitor<Type> for TypeResolver {
             .map(|p| {
                 let ty = self.visit_type(&p.ty);
 
-                self.node_to_type.insert(p.id, ty.clone());
+                self.node_to_type.insert(p.pattern.id, ty.clone());
 
                 let name = match &p.pattern.kind {
                     PatternKind::Ident(id) => Arc::from(id.value.as_str()),
@@ -834,16 +873,42 @@ impl Visitor<Type> for TypeResolver {
         self.env.pop_segment();
     }
 
-    fn visit_literal(&mut self, lit: &parsely_parser::expression::Literal, id: &NodeId) -> Type {
-        let ty = match lit {
-            Literal::Bool(_) => Type::new_bool(),
-            Literal::Int(_) => Type::new_int(None),
-            Literal::Float(_) => Type::new_float(None),
-            Literal::String(_) => Type::new_str(),
-            Literal::None(_) => Type::new_unit(),
-        };
+    // fn visit_return(&mut self, ret: &parsely_parser::item::Return, id: &NodeId) {
 
-        // self.node_to_value_type.insert(id.clone(), ty.clone());
+    // }
+
+    fn visit_literal(&mut self, lit: &parsely_parser::expression::Literal, id: &NodeId) -> Type {
+        let ty = match (lit, &self.type_hint) {
+            (Literal::Bool(_), _) => Type::new_bool(),
+            (
+                Literal::Int(_),
+                Some(
+                    ty @ Type {
+                        kind: TypeKind::Integer { .. },
+                    },
+                ),
+            ) => ty.clone(),
+            (Literal::Int(_), _) => Type::new_int(None),
+            (
+                Literal::Float(_),
+                Some(
+                    ty @ Type {
+                        kind: TypeKind::Float { .. },
+                    },
+                ),
+            ) => ty.clone(),
+            (Literal::Float(_), _) => Type::new_float(None),
+            (Literal::String(_), _) => Type::new_str(),
+            (
+                Literal::None(_),
+                Some(
+                    ty @ Type {
+                        kind: TypeKind::Optional { .. },
+                    },
+                ),
+            ) => ty.clone(),
+            (Literal::None(_), _) => Type::new_unit(),
+        };
 
         ty
     }
@@ -884,12 +949,32 @@ impl Visitor<Type> for TypeResolver {
         array: &parsely_parser::expression::ArrayInit,
         id: &NodeId,
     ) -> Type {
+        let new_ty_hint = if let Some(ty_hint) = &self.type_hint {
+            let len = array.elements.value.len();
+
+            match &ty_hint.kind {
+                TypeKind::Infer => None,
+                TypeKind::Array {
+                    base,
+                    size: Some(size),
+                } if *size == len => Some(base.as_ref().clone()),
+                TypeKind::Array { base, .. } => Some(base.as_ref().clone()),
+                _ => panic!("Error trying to assign type array to type {ty_hint}"),
+            }
+        } else {
+            None
+        };
+
+        let old_hint = std::mem::replace(&mut self.type_hint, new_ty_hint);
+
         let types: Vec<_> = array
             .elements
             .value
             .iter()
-            .map(|e| self.visit_expr(e, id))
+            .map(|e| self.visit_expr(e, &e.id))
             .collect();
+
+        let _ = std::mem::replace(&mut self.type_hint, old_hint);
 
         for (a, b) in types.iter().zip(types.iter().skip(1)) {
             if a != b {
@@ -900,7 +985,7 @@ impl Visitor<Type> for TypeResolver {
         let array_ty = Type {
             kind: TypeKind::Array {
                 base: Box::new(types[0].clone()),
-                size: types.len(),
+                size: Some(types.len()),
             },
         };
 
@@ -938,6 +1023,38 @@ impl Visitor<Type> for TypeResolver {
             (
                 TypeKind::Integer {
                     signed: ls,
+                    size: None,
+                },
+                TypeKind::Integer {
+                    signed: rs,
+                    size: Some(_),
+                },
+                Tok![enum +]
+                | Tok![enum -]
+                | Tok![enum *]
+                | Tok![enum /]
+                | Tok![enum &]
+                | Tok![enum |],
+            ) if ls == rs => left_ty.clone(),
+            (
+                TypeKind::Integer {
+                    signed: ls,
+                    size: Some(_),
+                },
+                TypeKind::Integer {
+                    signed: rs,
+                    size: None,
+                },
+                Tok![enum +]
+                | Tok![enum -]
+                | Tok![enum *]
+                | Tok![enum /]
+                | Tok![enum &]
+                | Tok![enum |],
+            ) if ls == rs => left_ty.clone(),
+            (
+                TypeKind::Integer {
+                    signed: ls,
                     size: lsz,
                 },
                 TypeKind::Integer {
@@ -971,7 +1088,7 @@ impl Visitor<Type> for TypeResolver {
                 | Tok![enum !=],
             ) if lhs == rhs => Type::new_bool(),
             (TypeKind::Bool, TypeKind::Bool, Tok![enum &&] | Tok![enum ||]) => Type::new_bool(),
-            _ => panic!("Type error!"),
+            _ => panic!("Type error! {} {:?} {}", left_ty, binop.op.as_str(), right_ty),
         };
 
         self.node_to_type.insert(id.clone(), ty.clone());
@@ -1054,7 +1171,8 @@ impl Visitor<Type> for TypeResolver {
         let node = self.path_to_node.get(&path).expect("TODO: type error");
         self.node_to_path.insert(id.clone(), path);
 
-        println!("{node:?} {:?}", self.node_to_type);
+        println!("{self:#?}");
+        println!("{:?} {node:?} {:?}", node, self.node_to_type);
 
         let ty = self
             .node_to_type
@@ -1075,10 +1193,13 @@ impl Visitor<Type> for TypeResolver {
         let ty = match (&var.init, &var.ty_annotation) {
             (Some((_, init)), Some((_, ty))) => {
                 // TODO: check types are compattiple
-                // Type::new_unit()
-                // ty.as_ref().clone()
-                self.visit_expr(init, &item.id);
-                self.visit_type(ty)
+                let ty = self.visit_type(ty);
+
+                let (ty, _) =
+                    self.with_type_hint(|resolver| resolver.visit_expr(init, &item.id), ty);
+
+                ty
+                // infer_type_with_expression(&ty, &expr_ty)
             }
             (Some((_, init)), None) => self.visit_expr(init, &item.id),
             (None, Some((_, ty))) => self.visit_type(ty),
@@ -1090,5 +1211,119 @@ impl Visitor<Type> for TypeResolver {
 
     fn default_value(&mut self) -> Type {
         Type::default()
+    }
+}
+
+fn infer_type_with_expression(ty: &Type, expr: &Type) -> Type {
+    match (&ty.kind, &expr.kind) {
+        (TypeKind::Infer, _) => expr.clone(),
+        // (TypeKind::Integer { signed, size }, TypeKind::Integer { signed, size }) => expr.clone(),
+        (
+            TypeKind::Array {
+                base: lbase,
+                size: None,
+            },
+            TypeKind::Array {
+                base: rbase,
+                size: Some(size),
+            },
+        ) => {
+            let base = infer_type_with_expression(lbase, &rbase);
+
+            Type {
+                kind: TypeKind::Array {
+                    base: Box::new(base),
+                    size: Some(*size),
+                },
+            }
+        }
+        (
+            TypeKind::Array {
+                base: lbase,
+                size: Some(lsize),
+            },
+            TypeKind::Array {
+                base: rbase,
+                size: Some(rsize),
+            },
+        ) if lsize == rsize => {
+            let base = infer_type_with_expression(lbase, &rbase);
+
+            Type {
+                kind: TypeKind::Array {
+                    base: Box::new(base),
+                    size: Some(*rsize),
+                },
+            }
+        }
+        (TypeKind::Slice { base: lbase }, TypeKind::Slice { base: rbase }) => {
+            let base = infer_type_with_expression(lbase, &rbase);
+
+            Type {
+                kind: TypeKind::Slice {
+                    base: Box::new(base),
+                },
+            }
+        }
+        (TypeKind::Tuple { fields: lfields }, TypeKind::Tuple { fields: rfields }) => {
+            let fields = lfields
+                .iter()
+                .zip(rfields.iter())
+                .map(|(l, r)| infer_type_with_expression(l, r))
+                .collect();
+
+            Type {
+                kind: TypeKind::Tuple { fields },
+            }
+        }
+        (
+            TypeKind::Ref {
+                base: lbase,
+                mutable: lmut,
+            },
+            TypeKind::Ref {
+                base: rbase,
+                mutable: rmut,
+            },
+        ) if lmut == rmut => {
+            let base = infer_type_with_expression(lbase, &rbase);
+
+            Type {
+                kind: TypeKind::Ref {
+                    base: Box::new(base),
+                    mutable: *lmut,
+                },
+            }
+        }
+        (
+            TypeKind::IndexRef {
+                base: lbase,
+                mutable: lmut,
+            },
+            TypeKind::IndexRef {
+                base: rbase,
+                mutable: rmut,
+            },
+        ) if lmut == rmut => {
+            let base = infer_type_with_expression(lbase, &rbase);
+
+            Type {
+                kind: TypeKind::IndexRef {
+                    base: Box::new(base),
+                    mutable: *lmut,
+                },
+            }
+        }
+        (TypeKind::Optional { base: lbase }, TypeKind::Optional { base: rbase }) => {
+            let base = infer_type_with_expression(lbase, &rbase);
+
+            Type {
+                kind: TypeKind::Optional {
+                    base: Box::new(base),
+                },
+            }
+        }
+        _ if ty == expr => ty.clone(),
+        _ => panic!("Unable to infer type"),
     }
 }

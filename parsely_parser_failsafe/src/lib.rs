@@ -138,7 +138,7 @@ pub struct ParseStream {
     ///
     sub_span: Option<Span>,
     /// node ids
-    next_id: AtomicU32,
+    next_id: Rc<RefCell<u32>>,
     ty_ctx: bool,
 }
 
@@ -359,7 +359,7 @@ impl ParseStream {
             diagnostics: self.diagnostics.clone(),
             until_terminator: None,
             sub_span: Some(span),
-            next_id: AtomicU32::new(0),
+            next_id: self.next_id.clone(),
             ty_ctx: false,
         }
     }
@@ -383,9 +383,12 @@ impl ParseStream {
     }
 
     pub fn next_id(&self) -> NodeId {
+        let mut next_id = self.next_id.borrow_mut();
+        let id = *next_id;
+        *next_id += 1;
+
         NodeId(
-            self.next_id
-                .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+            id
         )
     }
 }
@@ -398,7 +401,7 @@ impl From<Vec<Token>> for ParseStream {
             diagnostics: Rc::new(RefCell::new(Vec::new())),
             until_terminator: None,
             sub_span: None,
-            next_id: AtomicU32::new(0),
+            next_id: Rc::new(RefCell::new(0)),
             ty_ctx: false,
         }
     }
@@ -412,7 +415,7 @@ impl<'a> From<&'a [Token]> for ParseStream {
             diagnostics: Rc::new(RefCell::new(Vec::new())),
             until_terminator: None,
             sub_span: None,
-            next_id: AtomicU32::new(0),
+            next_id: Rc::new(RefCell::new(0)),
             ty_ctx: false,
         }
     }
@@ -426,7 +429,7 @@ impl<'a> From<&'a Vec<Token>> for ParseStream {
             diagnostics: Rc::new(RefCell::new(Vec::new())),
             until_terminator: None,
             sub_span: None,
-            next_id: AtomicU32::new(0),
+            next_id: Rc::new(RefCell::new(0)),
             ty_ctx: false,
         }
     }

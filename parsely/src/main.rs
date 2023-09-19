@@ -154,7 +154,7 @@ fn compile_file(input: impl AsRef<Path>, output: impl AsRef<Path>) -> io::Result
     let ctx = new_context();
     let codegen = LlvmCodegen::new(ty_res, &ctx);
     codegen.gen_program(&program);
-    let module = codegen.finish();
+    let module = codegen.finish(&output);
 
     // println!("{:#?}", pack);
 

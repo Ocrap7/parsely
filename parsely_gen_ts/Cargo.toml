@@ -9,3 +9,4 @@ edition = "2021"
 parsely-lexer = { path = "../parsely_lexer" }
 parsely-parser = { path = "../parsely_parser" }
 colored = "2.0.0"
+pathdiff = "*"

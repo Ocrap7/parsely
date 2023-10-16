@@ -15,6 +15,8 @@ pub enum Commands {
     Build {
         /// Source input files
         sources: Vec<PathBuf>,
+        #[arg(short, long)]
+        context: Option<PathBuf>,
         /// Output directory
         #[arg(short, long, default_value = "dist")]
         output: PathBuf,

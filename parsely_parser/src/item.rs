@@ -111,7 +111,7 @@ impl Parse for Input {
 
 #[derive(Debug, Clone)]
 pub struct Inputs {
-    pub input_tok: tokens::Input,
+    pub input_tok: tokens::Parameters,
     pub inputs: Braces<Punctuation<Input, Comma>>,
 }
 
@@ -135,7 +135,7 @@ impl Parse for Item {
     fn parse(stream: &'_ crate::ParseStream<'_>) -> crate::Result<Self> {
         match stream.peek()? {
             Token::Ident(_) => stream.parse().map(Item::Element),
-            tokens::Tok![enum input] => stream.parse().map(Item::Inputs),
+            tokens::Tok![enum parameters] => stream.parse().map(Item::Inputs),
             _ => stream.parse().map(Item::Expression),
         }
     }

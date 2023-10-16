@@ -1,4 +1,4 @@
-use std::{fmt::Write as FWrite, fs::File, io::Write};
+use std::{fmt::Write as FWrite, fs::File, io::Write, path::Path};
 
 use parsely_parser::program::Program;
 
@@ -15,10 +15,14 @@ pub struct Module {
     pub(crate) dirty: bool,
 }
 
+pub struct Config {
+    pub context_path: Box<Path>,
+}
+
 impl Module {
     const BUFFER_SIZE_INIT: usize = 1024;
 
-    pub fn run_new(name: impl ToString, program: &Program) -> Result<Module> {
+    pub fn run_new(name: impl ToString, program: &Program, config: &Config) -> Result<Module> {
         let mut module = Module {
             buffer: String::new(),
             name: name.to_string(),
@@ -26,7 +30,7 @@ impl Module {
             dirty: false,
         };
 
-        match module.run(program) {
+        match module.run(program, config) {
             Ok(_) | Err(Diagnostic::Caught(_)) => Ok(module),
             Err(e) => return Err(e),
         }
@@ -40,7 +44,7 @@ impl Module {
         self.errors.push(error);
     }
 
-    pub fn run(&mut self, program: &Program) -> Result<()> {
+    pub fn run(&mut self, program: &Program, config: &Config) -> Result<()> {
         let mut buffer = String::with_capacity(Self::BUFFER_SIZE_INIT);
         let mut input_type = String::new();
         let mut params = String::new();
@@ -68,7 +72,17 @@ impl Module {
             }
         }
 
-        self.buffer = format!("{}import Context from './context.ts'\nexport default function render<C extends Context>(ctx: C{}) {{return `{}`}}", input_type, params, buffer);
+        // let rel_context_path = Path::rel
+
+        let full_view_path = program.path.canonicalize().unwrap();
+        let full_context_path = config.context_path.canonicalize().unwrap().join("context.ts");
+        println!("{} {}", full_view_path.display(), config.context_path.display());
+        let rel_context_path = pathdiff::diff_paths(&full_context_path, &full_view_path).unwrap();
+        let rel_context_path = rel_context_path.display();
+        let rel_context_path = rel_context_path.to_string().replace('\\', "/");
+        // rel_context_path.
+
+        self.buffer = format!("{}import Context from '{}'\nexport default function render<C extends Context>(ctx: C{}) {{return `{}`}}", input_type, rel_context_path, params, buffer);
 
         self.dirty = !self.errors.is_empty();
         Ok(())

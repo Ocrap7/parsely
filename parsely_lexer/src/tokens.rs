@@ -412,13 +412,14 @@ impl crate::AsSpan for Template {
 define_tokens! {
     Tok;
     pub enum Token {
-        Input = input,
+        Parameters = parameters,
 
         // Punctuation
         Semi = ;,
         Question = ?,
         Colon = :,
         Comma = ,,
+        Dot = .,
         Pound = #,
     }
 }

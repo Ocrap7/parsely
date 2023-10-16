@@ -9,12 +9,13 @@ impl Module {
         match expr {
             Expression::Literal(lit) => self.gen_literal(buffer, lit)?,
             Expression::Ident(i) => write!(buffer, "{}", i.value)?,
+            Expression::Enum(en) => write!(buffer, "{}", en.ident.value)?,
             Expression::ArrayInit(array) => {
                 for value in array.elements.value.iter() {
                     self.gen_expression(buffer, value)?;
                     write!(buffer, " ")?;
                 }
-            },
+            }
             Expression::Template(t) => write!(buffer, "${{{}}}", t.value.trim())?,
         }
         Ok(())

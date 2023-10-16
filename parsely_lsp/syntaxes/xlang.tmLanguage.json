@@ -1,0 +1,337 @@
+{
+    "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+    "scopeName": "source.par",
+    "patterns": [
+        {
+            "include": "#all"
+        }
+    ],
+    "repository": {
+        "all": {
+            "patterns": [
+                {
+                    "include": "#input"
+                },
+                {
+                    "include": "#element_body"
+                },
+                {
+                    "include": "#element"
+                },
+                {
+                    "include": "#single_element"
+                },
+                {
+                    "include": "#argument_list"
+                },
+                {
+                    "include": "#literal"
+                },
+                {
+                    "include": "#comments"
+                },
+                {
+                    "include": "#inlined"
+                }
+            ]
+        },
+        "input": {
+            "begin": "(parameters)\\s*{",
+            "end": "}",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword.input"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#inlined_types"
+                },
+                {
+                    "match": "(:|,)\\s*"
+                },
+                {
+                    "match": "([a-zA-Z][a-zA-Z0-9]*)",
+                    "name": "variable.parameter"
+                }
+            ]
+        },
+        "element_body": {
+            "begin": "{",
+            "end": "}",
+            "patterns": [
+                {
+                    "include": "#all"
+                }
+            ]
+        },
+        "element": {
+            "match": "([a-zA-Z][a-zA-Z0-9]*)\\s*",
+            "captures": {
+                "1": {
+                    "name": "keyword"
+                }
+            }
+        },
+        "single_element": {
+            "begin": "([a-zA-Z][a-zA-Z0-9]*)\\s*",
+            "end": ";",
+            "beginCaptures": {
+                "1": {
+                    "name": "entity.name.function"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#argument_list"
+                },
+                {
+                    "include": "#all"
+                }
+            ]
+        },
+        "enum_varient": {
+            "match": "\\.[a-zA-Z0-9_\\-]+",
+            "name": "enum"
+        },
+        "argument_list": {
+            "begin": "\\(",
+            "end": "\\)",
+            "name": "argument_list",
+            "patterns": [
+                {
+                    "match": "([a-zA-Z][a-zA-Z0-9]*)",
+                    "captures": {
+                        "0": {
+                            "name": "variable.parameter"
+                        }
+                    }
+                },
+                {
+                    "match": "(:|,)",
+                    "captures": {
+                        "0": {
+                            "name": "keyword.operator"
+                        }
+                    }
+                },
+                {
+                    "include": "#all"
+                }
+            ]
+        },
+        "inlined": {
+            "begin": "\\$\\{",
+            "end": "\\}",
+            "patterns": [
+                {
+                    "include": "source.ts#expression"
+                }
+            ]
+        },
+        "inlined_types": {
+            "begin": "\\$\\{",
+            "end": "\\}",
+            "patterns": [
+                {
+                    "include": "source.ts#type"
+                }
+            ]
+        },
+        "attribute": {
+            "begin": "#!\\s*\\[",
+            "end": "\\]",
+            "patterns": [
+                {
+                    "include": "#literal"
+                }
+            ]
+        },
+        "module_binding": {
+            "match": "\\b(module)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword"
+                },
+                "2": {
+                    "name": "support.other.namespace"
+                }
+            }
+        },
+        "type_binding": {
+            "match": "\\b(type)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword"
+                },
+                "2": {
+                    "name": "entity.name.type"
+                }
+            }
+        },
+        "function_binding": {
+            "begin": "\\b(let)\\s+((?:(?:const|inline|internal)\\s*)*(?=\\b))([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+            "end": "\\)",
+            "name": "func.vjvsdflk",
+            "beginCaptures": {
+                "1": {
+                    "name": "keyword"
+                },
+                "2": {
+                    "name": "keyword"
+                },
+                "3": {
+                    "name": "entity.name.function"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#all"
+                },
+                {
+                    "match": "(:|,=)",
+                    "name": "punctuation"
+                }
+            ]
+        },
+        "value_binding": {
+            "match": "\\b(let)\\s+(?:(mut)\\s+)?([a-zA-Z_][a-zA-Z0-9_]*)\\s*:?\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword"
+                },
+                "2": {
+                    "name": "keyword"
+                },
+                "3": {
+                    "name": "variable.name"
+                }
+            }
+        },
+        "primitve_type": {
+            "match": "\\b(uint[0-9]*|int[0-9]*|float[0-9]*|fixed[0-9]*|bool|char|string|anytype)\\b",
+            "captures": {
+                "1": {
+                    "name": "entity.name.type"
+                }
+            }
+        },
+        "control_flow": {
+            "match": "\\b(loop|export|import|in|if|do|then|else|match|with|return|break|continue)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword.control"
+                }
+            }
+        },
+        "keyword": {
+            "match": "\\b(let|type|module|typeof|typeinfo|of|mut|sizeof|const|inline|persist|internal)\\b",
+            "captures": {
+                "1": {
+                    "name": "keyword"
+                }
+            }
+        },
+        "string-single": {
+			"name": "string.quoted.single.ts",
+			"begin": "'",
+			"beginCaptures": {
+				"0": {
+					"name": "punctuation.definition.string.begin.ts"
+				}
+			},
+			"end": "(\\')|((?:[^\\\\\\n])$)",
+			"endCaptures": {
+				"1": {
+					"name": "punctuation.definition.string.end.ts"
+				},
+				"2": {
+					"name": "invalid.illegal.newline.ts"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#string-character-escape"
+				}
+			]
+		},
+		"string-character-escape": {
+			"name": "constant.character.escape.ts",
+			"match": "\\\\(x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|u\\{[0-9A-Fa-f]+\\}|[0-2][0-7]{0,2}|3[0-6][0-7]?|37[0-7]?|[4-7][0-7]?|.|$)"
+		},
+        "literal": {
+            "patterns": [
+                {
+                    "include": "#string-single"
+                },
+                {
+                    "match": "(true|false|none)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword"
+                        }
+                    }
+                },
+                {
+                    "begin": "([a-zA-Z_][a-zA-Z0-9_]*)\\(",
+                    "end": "\\)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "entity.name.function"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#all"
+                        },
+                        {
+                            "match": "(,|:)",
+                            "name": "punctuation"
+                        }
+                    ],
+                    "name": "variable.name"
+                },
+                {
+                    "match": "[a-zA-Z_][a-zA-Z0-9_]*",
+                    "name": "variable.name"
+                },
+                {
+                    "match": "\\b\\d+(?:.\\d*)?\\b",
+                    "name": "constant.numeric"
+                }
+            ]
+        },
+        "comments": {
+            "patterns": [
+                {
+                    "begin": "/\\*",
+                    "captures": {
+                        "0": {
+                            "name": "punctuation.definition.comment"
+                        }
+                    },
+                    "end": "\\*/",
+                    "name": "comment.block"
+                },
+                {
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.definition.comment"
+                        }
+                    },
+                    "match": "(///).*$\\n?",
+                    "name": "comment.block.documentation"
+                },
+                {
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.definition.comment"
+                        }
+                    },
+                    "match": "(//).*$\\n?",
+                    "name": "comment.line.double-slash"
+                }
+            ]
+        }
+    }
+}

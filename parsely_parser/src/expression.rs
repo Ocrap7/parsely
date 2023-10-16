@@ -1,4 +1,7 @@
-use parsely_lexer::tokens::{self, Token};
+use parsely_lexer::{
+    tokens::{self, Token},
+    Tok,
+};
 
 use crate::{Brackets, Parse, ParseError, ParseStream, Punctuation, Result};
 
@@ -81,9 +84,25 @@ impl Parse for LiteralString {
 }
 
 #[derive(Debug, Clone)]
+pub struct Enum {
+    pub dot_tok: Tok![.],
+    pub ident: tokens::Ident,
+}
+
+impl Parse for Enum {
+    fn parse(stream: &'_ ParseStream<'_>) -> Result<Self> {
+        Ok(Enum {
+            dot_tok: stream.parse()?,
+            ident: stream.parse()?,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Expression {
     Literal(Literal),
     Ident(tokens::Ident),
+    Enum(Enum),
     ArrayInit(ArrayInit),
     Template(tokens::Template),
 }
@@ -97,6 +116,7 @@ impl Parse for Expression {
             }) => stream.parse().map(|array| Expression::ArrayInit(array)),
             Token::Ident(ident) => Ok(Expression::Ident(stream.next_ref(ident))),
             Token::Template(t) => Ok(Expression::Template(stream.next_ref(t))),
+            Token::Dot(_) => stream.parse().map(Expression::Enum),
             _ => stream.parse().map(|tok| Expression::Literal(tok)),
         }
     }

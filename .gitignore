@@ -1,3 +1,6 @@
 /target
 /dist
 parsely_gen_old
+node_modules
+out
+*.vsix

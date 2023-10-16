@@ -21,7 +21,7 @@ macro_rules! impl_token_parse {
 }
 
 impl_token_parse! {
-    Input,
+    Parameters,
     Template,
 
     // Punctuation
@@ -30,6 +30,7 @@ impl_token_parse! {
     Colon,
     Comma,
     Pound,
+    Dot,
 
     Ident,
     Int,

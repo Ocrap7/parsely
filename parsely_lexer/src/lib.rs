@@ -264,7 +264,7 @@ impl Lexer {
 
         let kw_ind = slice
             .iter()
-            .position(|c| !c.is_alphanumeric() && *c != '_')
+            .position(|c| !c.is_alphanumeric() && *c != '_'  && *c != '-')
             .unwrap_or(slice.len());
 
         let int_slice = &slice[..int_ind];
@@ -295,7 +295,7 @@ impl Lexer {
             /* false */
             ['f', 'a', 'l', 's', 'e'] => Some(Bool::from_value(false, slice, self.make_position())),
 
-            ['i', 'n', 'p', 'u', 't'] => Some(tokens::Input::from_span_start(self.make_position())),
+            ['p', 'a', 'r', 'a', 'm', 'e', 't', 'e', 'r', 's'] => Some(tokens::Parameters::from_span_start(self.make_position())),
             c => Some(Ident::from_span_start(c, self.make_position())),
         };
 
@@ -471,6 +471,7 @@ impl Lexer {
             ('?', _, _) => Some(Question::from_span_start(self.make_position())),
             (':', _, _) => Some(Colon::from_span_start(self.make_position())),
             (',', _, _) => Some(Comma::from_span_start(self.make_position())),
+            ('.', _, _) => Some(Dot::from_span_start(self.make_position())),
             ('#', _, _) => Some(Pound::from_span_start(self.make_position())),
 
             // Whitespace

@@ -18,15 +18,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
-name = "aho-corasick"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c378d78423fdad8089616f827526ee33c19f2fddbd5de1629152c9593ba4783"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "anstream"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -224,12 +215,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "either"
-version = "1.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
-
-[[package]]
 name = "errno"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -377,29 +362,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inkwell"
-version = "0.2.0"
-source = "git+https://github.com/TheDan64/inkwell?branch=master#21a7cc2b70116b9887beff499a9a98f872cb3680"
-dependencies = [
- "either",
- "inkwell_internals",
- "libc",
- "llvm-sys",
- "once_cell",
- "thiserror",
-]
-
-[[package]]
-name = "inkwell_internals"
-version = "0.8.0"
-source = "git+https://github.com/TheDan64/inkwell?branch=master#21a7cc2b70116b9887beff499a9a98f872cb3680"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.28",
-]
-
-[[package]]
 name = "is-terminal"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -433,19 +395,6 @@ name = "linux-raw-sys"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57bcfdad1b858c2db7c38303a6d2ad4dfaf5eb53dfeb0910128b2c26d6158503"
-
-[[package]]
-name = "llvm-sys"
-version = "150.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "417dbaef2fece3b186fe15704e010849279de5f7eea1caa8845558130867bdd2"
-dependencies = [
- "cc",
- "lazy_static",
- "libc",
- "regex",
- "semver",
-]
 
 [[package]]
 name = "lock_api"
@@ -555,8 +504,18 @@ name = "parsely"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "parsely-analysis",
  "parsely-diagnostics",
- "parsely-gen",
+ "parsely-gen-ts",
+ "parsely-lexer",
+ "parsely-parser",
+]
+
+[[package]]
+name = "parsely-analysis"
+version = "0.1.0"
+dependencies = [
+ "parsely-diagnostics",
  "parsely-lexer",
  "parsely-parser",
 ]
@@ -570,12 +529,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "parsely-gen"
+name = "parsely-gen-ts"
 version = "0.1.0"
 dependencies = [
- "inkwell",
+ "colored",
+ "parsely-diagnostics",
  "parsely-lexer",
  "parsely-parser",
+ "pathdiff",
 ]
 
 [[package]]
@@ -590,7 +551,9 @@ name = "parsely-lsp"
 version = "0.1.0"
 dependencies = [
  "log",
+ "parsely-analysis",
  "parsely-diagnostics",
+ "parsely-gen-ts",
  "parsely-lexer",
  "parsely-parser",
  "serde",
@@ -612,11 +575,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "parsely_ast"
-version = "0.1.0"
-dependencies = [
- "parsely-lexer",
-]
+name = "pathdiff"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8835116a5c179084a830efb3adc117ab007512b535bc1a21c991d3b32a6b44dd"
 
 [[package]]
 name = "percent-encoding"
@@ -708,35 +670,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "regex"
-version = "1.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12de2eff854e5fa4b1295edd650e227e9d8fb0c9e90b12e7f36d6a6811791a29"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-automata",
- "regex-syntax",
-]
-
-[[package]]
-name = "regex-automata"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49530408a136e16e5b486e883fbb6ba058e8e4e8ae6621a77b048b314336e629"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-syntax",
-]
-
-[[package]]
-name = "regex-syntax"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbb5fb1acd8a1a18b3dd5be62d25485eb770e05afb408a9627d14d451bae12da"
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -766,12 +699,6 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
-
-[[package]]
-name = "semver"
-version = "1.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0293b4b29daaf487284529cc2f5675b8e57c61f70167ba415a463651fd6a918"
 
 [[package]]
 name = "serde"
@@ -875,26 +802,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "thiserror"
-version = "1.0.48"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d6d7a740b8a666a7e828dd00da9c0dc290dff53154ea77ac109281de90589b7"
-dependencies = [
- "thiserror-impl",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "1.0.48"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49922ecae66cc8a249b77e68d1d0623c1b2c514f0060c27cdc68bd62a1219d35"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.28",
 ]
 
 [[package]]

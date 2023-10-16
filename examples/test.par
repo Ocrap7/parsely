@@ -1,177 +1,19 @@
-let i: int32 = 45
-let fb: uint64 = 34
-let mut i: int8 = 4
-let mut b = false
+parameters {
+    value: ${number}
+}
 
-let array: [int: 6] = [1, 2, 3, 4, 5, 6]
-let mut array = [2, 4, 6, 8, 9]
-let other_array = [1..=6]
-let slice = other_array[0..3]
+html {
+    head {
+        
+        title 'This title';
+    }
 
-let tuple: int32 * uint8 * bool * float64 = (1, 2, true, 4.5);
-
-let optional: int32? = none
-let pointer: int32& = &i // can't be none or 'null' 
-let opt_pointer: int32&? = none // can be none (represented as null)
-
-let slice_mut: int8&mut = &mut i
-let raw_ref_array: int8[&] = &array
-let raw_mut_ref_array: int8[&mut] = &mut array
-
-let func (p: int32) = 
-    let i = 45
-
-    if i > 45 then
-        debug("iiiiiiii")
-        i += 2;
-    else
-        debug("nothing...")
-    ;
-
-    loop val in other_array do
-        debug(val)
-    ;
-
-    loop i < 100 do 
-        debug("I is less than 100")
-    ;
-
-    loop do
-        debug("Infinite loop")
-    ;
-
-    debug("Infinite loop")
-;
-
-let f1 (param: int32, default_val: int32 = 0) = 
-    debug("")
-;
-// f1(param: 0, default_val: 1)
-
-// first parameter is positional
-let f2 (*param: int32, default_val: int32 = 0) = 
-    debug(param, default_val)
-;
-
-let f3 (T: type) = 
-    debug(T.typeinfo.name, T.typeinfo.size)
-;
-
-let f3 (value: int32) =
-    let sum = const do
-        let mut sum = 0
-
-        loop i in 0..value do
-            sum += i
-        ;
-
-        break sum   
-    ;
-
-    return sum
-;
-
-/// Same as `f3` but is cleaner
-let const f3 (value: int32) = 
-    let mut sum = 0
-
-    loop i in 0..value do
-        sum += i
-    ;
-
-    return sum
-;
-
-let inline inlined (input: uint) =
-    return input * 2
-;
-
-// f2(0, default_val: 1)
-
-// Type alias
-type MyInt = int32;
-
-// let myint = Myint : 0
-// let myint: MyInt = 0
-
-type TaggedUnion = 
-    int32 | bool | MyInt | NonType | NonTypeValue : int32 * bool // If the variant is resolved as a type, it is represented as int32:int32
-
-let match_union (value: TaggedUnion) = 
-    match value with
-        .int32 : i => 
-            debug(i)
-            0,
-        .bool : b =>
-            debug(b)
-            1
-        .MyInt : m =>
-            debug(m)
-            2
-        .NonType => 
-            debug("None Type")
-            3
-        .NonTypeValue : (i, b)
-            debug(i, b)
-            4
-    ;
-;
-
-// let tu = .int32 : 34
-// let tu2 = .bool : false
-// let tu3: TaggedUnion = false
-// let tu4 = TaggedUnion.NonTypeValue : (0, false)
-
-type ExplicitlyTaggedUnion = uint8 of 
-    int32 = 0 | bool | MyInt // Explicit index of int32, rest are incremented
-;
-
-type Model = 
-    position: uint,
-    data: [mut char]
-;
-
-let model_func (self: Model&mut): char =
-    let tmp = data[self.position]
-    self.position += 1
-
-    return tmp
-;
-
-///
-
-type Container (Type: type, len: uint) = 
-    data: [Type: len]
-;
-
-// let p: Container(int32, 4) = { data: &[1, 2, 3, 4] }
-
-type Computed (Type: type) = 
-    let size = Type.typeinfo.size
-
-    match size with
-        1 => uint8,
-        2 => uint16,
-        4 => uint32,
-        8 => uint64
-;
-
-module Util =
-    export let internal debug(values: [anytype: _])
-    export let internal print(const fmt: string, value: [anytype: _])
-    export let internal println(const fmt: string, value: [anytype: _])
-;
-
-import Util // Every exported in Util will be available in this module
-
-module Generic (T: type) =
-    export let receive (): T = ();
-    export let send (value: T) = ();
-;
-
-export let const internal end() = ();
-
-import Generic(int32)
-// Everything in the below block will have access to all exported items in `Generic` module
-
-// let val = Generic(int32).receive()
+    body {
+        a (href: '/route', fdfsd: 'fdjkslf') {
+            ${
+               34434 
+            }
+            'Goto route'
+        }
+    }
+}

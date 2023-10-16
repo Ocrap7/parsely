@@ -1,7 +1,6 @@
 use std::{collections::HashMap, path::Path};
 
-use parsely_diagnostics::Diagnostic;
-use parsely_lexer::{tokens::Token, AsSpan, Position, Range, Span, Tok};
+use parsely_lexer::{tokens::Token, AsSpan, Position, Range, Span};
 
 use crate::{item::Item, tokens, ParseStream};
 
@@ -49,11 +48,10 @@ impl Program {
     }
 
     /// Parses the program, filling the `items` field with parsed values
-    pub fn parse(mut self) -> crate::Result<(Program, Vec<Diagnostic>)> {
-        let mut stream = ParseStream::from(&self.tokens);
-        self.items = crate::parse_vec_to_terminator::<_, Tok![;]>(&mut stream)?;
-
-        Ok((self, stream.finish()))
+    pub fn parse(mut self) -> crate::Result<Program> {
+        let stream = ParseStream::from(&self.tokens);
+        self.items = stream.parse()?;
+        Ok(self)
     }
 
     /// Determines the line endings this file uses.
@@ -63,7 +61,7 @@ impl Program {
         if self.source.contains("\r\n") {
             LineEnding::CRLF
         } else {
-            // assert!(self.source.contains('\n'));
+            assert!(self.source.contains('\n'));
             LineEnding::LF
         }
     }
@@ -90,8 +88,9 @@ impl Program {
         let start_index = if span.start.line == 0 {
             0
         } else {
-            self.source.match_indices('\n').nth(span.start.line - 1)?.0 + 1 // Get the char after the linefeed
+            self.source.match_indices('\n').nth(span.start.line - 1)?.0
         };
+        let start_index = start_index + 1; // Get the char after the linefeed
 
         let (end_index, _) = self
             .source
@@ -110,17 +109,83 @@ impl Program {
     }
 }
 
-impl AsSpan for Program {
-    fn as_span(&self) -> Span {
-        let Some(first) = self.items.first() else {
-            return Span::EMPTY
-        };
+// impl parsely_lexer::AsSpan for Program {
+//     fn as_span(&self) -> parsely_lexer::Span {
+//         self.items.as_span()
+//     }
+// }
 
-        let Some(last) = self.items.last() else {
-            return Span::EMPTY
-        };
+pub struct TokenCache<'a> {
+    program: &'a Program,
+    pub(crate) positions: HashMap<Position, usize>,
+    pub(crate) lines: HashMap<usize, Range>,
+}
 
-        first.as_span().join(last.as_span())
+impl<'a> TokenCache<'a> {
+    pub fn new(program: &'a Program) -> TokenCache<'a> {
+        TokenCache {
+            program,
+            positions: HashMap::default(),
+            lines: HashMap::new(),
+        }
+    }
+
+    pub fn token_index(&mut self, position: &Position) -> usize {
+        if let Some(position) = self.positions.get(position) {
+            *position
+        } else {
+            let token_range = self.line_index(position.line);
+            let start_index = token_range.0.start;
+
+            let tokens = self.program.tokens(token_range);
+
+            let token_index = tokens.iter().enumerate().position(|(i, tok)| {
+                self.positions.insert(tok.as_span().start, start_index + i);
+
+                tok.as_span().start == *position
+            });
+
+            start_index + token_index.expect("Unable to find token with position")
+        }
+    }
+
+    pub fn line_index(&mut self, line: usize) -> Range {
+        if let Some(range) = self.lines.get(&line) {
+            range.clone()
+        } else {
+            let line_token_index = self
+                .program
+                .tokens
+                .binary_search_by_key(&line, |tok| tok.as_span().start.line)
+                .expect("Unable to find token with specified line number");
+
+            let start_index = self
+                .program
+                .tokens
+                .iter()
+                .take(line_token_index)
+                .rev()
+                .position(|tok| tok.as_span().start.line != line)
+                .unwrap_or(0);
+            let start_index = line_token_index - start_index;
+
+            let tokens = &self.program.tokens[start_index..];
+            let end_index = tokens
+                .iter()
+                .position(|tok| {
+                    if let Token::Eof(_) = tok {
+                        false
+                    } else {
+                        tok.as_span().start.line != line
+                    }
+                })
+                .unwrap_or(tokens.len());
+
+            self.lines
+                .insert(line, Range(start_index..start_index + end_index));
+
+            Range(start_index..start_index + end_index)
+        }
     }
 }
 
@@ -134,6 +199,6 @@ impl parsely_diagnostics::Program for Program {
     }
 
     fn slice(&self, span: &Span) -> Option<&str> {
-        self.source_lines_slice(span)
+        self.source_slice(span)
     }
 }

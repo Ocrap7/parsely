@@ -2,16 +2,12 @@ use std::{
     fs::File,
     io::{self, Read, Write},
     path::{Path, PathBuf},
-    sync::Arc,
 };
 
 use clap::Parser;
-use parsely_diagnostics::{Diagnostic, DiagnosticFmt, DiagnosticLevel, DiagnosticModuleFmt};
-use parsely_gen::{
-    llvm_codegen::{new_context, LlvmCodegen},
-    visitor::Visitor,
-};
-// use parsely_gen_asm::{module::Module, pack::Pack};
+use parsely_analysis::Analyzer;
+use parsely_diagnostics::{Diagnostic, DiagnosticFmt, DiagnosticModuleFmt};
+use parsely_gen_ts::module::{Config, Module};
 use parsely_lexer::{Lexer, Span};
 use parsely_parser::program::Program;
 
@@ -23,7 +19,11 @@ fn main() {
     let args = args::Args::parse();
 
     match args.command {
-        args::Commands::Build { sources, output } => {
+        args::Commands::Build {
+            sources,
+            output,
+            context,
+        } => {
             if let Err(e) = std::fs::create_dir_all(&output) {
                 print_error(format!(
                     "Unable to open or create output directory `{}`: {e}",
@@ -31,22 +31,27 @@ fn main() {
                 ));
             }
 
-            compile_files(&sources, &output, &output);
+            let context_path = context.unwrap_or_else(|| std::env::current_dir().unwrap());
+            let config = Config {
+                context_path: context_path.into_boxed_path(),
+            };
+
+            compile_files(&sources, &output, &output, &config);
         }
     }
 }
 
 fn print_error(str: String) {
-    let diags = &[Diagnostic::Message(
+    let diags = &[parsely_diagnostics::Diagnostic::Message(
         str,
         Span::EMPTY,
-        DiagnosticLevel::Error,
+        parsely_diagnostics::DiagnosticLevel::Error,
     )];
     let fmt = DiagnosticFmt(diags);
     println!("{fmt}");
 }
 
-fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
+fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>, config: &Config) {
     for file in sources {
         if file.is_dir() {
             let files = match std::fs::read_dir(file) {
@@ -85,7 +90,7 @@ fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
                 ));
             }
 
-            compile_files(&sources, base, output_file_dir);
+            compile_files(&sources, base, output_file_dir, config);
             continue;
         } else if !file.is_file() {
             print_error(format!("Input path `{}` is not a file", file.display()));
@@ -105,11 +110,11 @@ fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
             continue;
         };
 
-        let output = output.as_ref().join(filename).with_extension("rs");
-        match compile_file(&file, output) {
-            Ok((module, program)) => {
-                // let fmt = DiagnosticModuleFmt(module.diagnostics(), &program);
-                // print!("{fmt}");
+        let output = output.as_ref().join(filename).with_extension("ts");
+        match compile_file(&file, output, config) {
+            Ok((diagnostics, program)) => {
+                let fmt = DiagnosticModuleFmt(&diagnostics, &program);
+                print!("{fmt}");
             }
             Err(e) => {
                 match e.kind() {
@@ -123,56 +128,42 @@ fn compile_files(sources: &[PathBuf], base: &Path, output: impl AsRef<Path>) {
     }
 }
 
-fn compile_file(input: impl AsRef<Path>, output: impl AsRef<Path>) -> io::Result<((), Program)> {
+fn compile_file(
+    input: impl AsRef<Path>,
+    output: impl AsRef<Path>,
+    config: &Config,
+) -> io::Result<(Vec<Diagnostic>, Program)> {
     let mut file = File::open(&input)?;
 
     let mut buffer = String::with_capacity(256);
     file.read_to_string(&mut buffer)?;
 
     let tokens = Lexer::run(buffer.as_bytes());
-    println!("{tokens:#?}");
-    let (program, diagnostics) = Program::new(&input, buffer, tokens).parse().unwrap();
-    println!("{:3?}", program.items);
+    let program = Program::new(&input, buffer, tokens).parse().unwrap();
 
-    let dmd = DiagnosticModuleFmt(&diagnostics, &program);
-    println!("{dmd}");
+    let mut analyzer = Analyzer::new();
+    analyzer.run(&program);
+
+    let module = Module::run_new(
+        input
+            .as_ref()
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .as_ref(),
+        &program,
+        config,
+    )
+    .unwrap();
 
     let mut output_file = File::create(&output)?;
-    write!(output_file, "{:#?}", program.items)?;
+    output_file.write_all(module.buffer.as_bytes())?;
 
-    let mut p = parsely_gen::resolve::DeclarationResolver::new("mymod");
-    p.visit_program(&program);
+    let diagnostics = analyzer
+        .diagnostics
+        .into_iter()
+        .chain(module.diagnostics.into_iter())
+        .collect();
 
-    let mut ires = p.to_interface_resolve();
-    ires.visit_program(&program);
-
-    let mut ty_res = ires.to_type_resolver();
-    ty_res.visit_program(&program);
-
-    println!("{:#?}", ty_res);
-
-    let ctx = new_context();
-    let codegen = LlvmCodegen::new(ty_res, &ctx);
-    codegen.gen_program(&program);
-    let module = codegen.finish(&output);
-
-    // println!("{:#?}", pack);
-
-    // let module = Module::run_new(
-    //     input
-    //         .as_ref()
-    //         .file_stem()
-    //         .unwrap()
-    //         .to_string_lossy()
-    //         .as_ref(),
-    //     &program,
-    //     diagnostics,
-    // )
-    // .unwrap();
-    let mut output_file = File::create(output.as_ref().with_extension("ll"))?;
-    write!(output_file, "{}", module)?;
-
-    // output_file.wri;
-
-    Ok(((), program))
+    Ok((diagnostics, program))
 }

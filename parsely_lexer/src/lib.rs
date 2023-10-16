@@ -1,4 +1,3 @@
-#![feature(result_option_inspect)]
 use std::{
     cmp::Ordering,
     fmt::{Debug, Display},
@@ -12,6 +11,12 @@ pub mod tokens;
 
 pub trait AsSpan {
     fn as_span(&self) -> Span;
+}
+
+impl AsSpan for Span {
+    fn as_span(&self) -> Span {
+        *self
+    }
 }
 
 impl<T: AsSpan> AsSpan for Option<T> {
@@ -213,15 +218,6 @@ where
     }
 }
 
-impl AsSpan for (Span, Span) {
-    fn as_span(&self) -> Span {
-        Span {
-            start: self.0.start,
-            end: self.1.end,
-        }
-    }
-}
-
 impl AsSpan for (Position, Position) {
     fn as_span(&self) -> Span {
         Span {
@@ -368,7 +364,7 @@ impl Lexer {
 
         let kw_ind = slice
             .iter()
-            .position(|c| !c.is_alphanumeric() && *c != '_')
+            .position(|c| !c.is_alphanumeric() && *c != '_' && *c != '-')
             .unwrap_or(slice.len());
 
         let int_slice = &slice[..int_ind];
@@ -397,29 +393,7 @@ impl Lexer {
             match_token!["true"] => Some(Bool::from_value(true, slice, self.make_position())),
             match_token!["false"] => Some(Bool::from_value(false, slice, self.make_position())),
 
-            match_token!["let"] => consume_kw![Let],
-            match_token!["mut"] => consume_kw![Mut],
-            match_token!["type"] => consume_kw![Type],
-            match_token!["module"] => consume_kw![Module],
-            match_token!["if"] => consume_kw![If],
-            match_token!["then"] => consume_kw![Then],
-            match_token!["else"] => consume_kw![Else],
-            match_token!["loop"] => consume_kw![Loop],
-            match_token!["do"] => consume_kw![Do],
-            match_token!["of"] => consume_kw![Of],
-            match_token!["in"] => consume_kw![In],
-            match_token!["none"] => consume_kw![Nones],
-            match_token!["match"] => consume_kw![Match],
-            match_token!["with"] => consume_kw![With],
-            match_token!["export"] => consume_kw![Export],
-            match_token!["import"] => consume_kw![Import],
-            match_token!["const"] => consume_kw![Const],
-            match_token!["inline"] => consume_kw![Inline],
-            match_token!["internal"] => consume_kw![Internal],
-            match_token!["persist"] => consume_kw![Persist],
-            match_token!["return"] => consume_kw![Return],
-            match_token!["break"] => consume_kw![Break],
-            match_token!["continue"] => consume_kw![Continue],
+            match_token!["parameters"] => consume_kw![Parameters],
 
             c => Some(Ident::from_span_start(c, self.make_position())),
         };
@@ -465,7 +439,6 @@ impl Lexer {
             && float_slice.contains(&'.')
             && slice
                 .get(float_ind - 1..=float_ind)
-                .inspect(|f| println!("{f:?}"))
                 .filter(|c| if let ['.', '.'] = c { true } else { false })
                 .is_none()
         {
@@ -769,47 +742,48 @@ impl Lexer {
             (',', _, _) => Some(Comma::from_span_start(self.make_position())),
             ('#', Some('!'), _) => Some(Shebang::from_span_start(self.make_position())),
             ('#', _, _) => Some(Pound::from_span_start(self.make_position())),
+            ('$', Some('{'), _) => return Some(self.try_template()),
 
             // Operators
-            ('&', Some('='), _) => Some(AndEq::from_span_start(self.make_position())),
-            ('&', Some('&'), _) => Some(LogicalAnd::from_span_start(self.make_position())),
-            ('&', _, _) => Some(And::from_span_start(self.make_position())),
-            ('=', Some('='), _) => Some(Eq::from_span_start(self.make_position())),
-            ('=', Some('>'), _) => Some(Arrow::from_span_start(self.make_position())),
-            ('=', _, _) => Some(Assign::from_span_start(self.make_position())),
-            ('.', Some('.'), Some('=')) => Some(RangeEq::from_span_start(self.make_position())),
-            ('.', Some('.'), _) => Some(tokens::Range::from_span_start(self.make_position())),
-            ('.', Some('*'), _) => Some(tokens::DotStar::from_span_start(self.make_position())),
+            // ('&', Some('='), _) => Some(AndEq::from_span_start(self.make_position())),
+            // ('&', Some('&'), _) => Some(LogicalAnd::from_span_start(self.make_position())),
+            // ('&', _, _) => Some(And::from_span_start(self.make_position())),
+            // ('=', Some('='), _) => Some(Eq::from_span_start(self.make_position())),
+            // ('=', Some('>'), _) => Some(Arrow::from_span_start(self.make_position())),
+            // ('=', _, _) => Some(Assign::from_span_start(self.make_position())),
+            // ('.', Some('.'), Some('=')) => Some(RangeEq::from_span_start(self.make_position())),
+            // ('.', Some('.'), _) => Some(tokens::Range::from_span_start(self.make_position())),
+            // ('.', Some('*'), _) => Some(tokens::DotStar::from_span_start(self.make_position())),
             ('.', _, _) => Some(Dot::from_span_start(self.make_position())),
-            ('>', Some('>'), Some('=')) => {
-                Some(RightShiftEq::from_span_start(self.make_position()))
-            }
-            ('>', Some('>'), _) => Some(RightShift::from_span_start(self.make_position())),
-            ('>', Some('='), _) => Some(GtEq::from_span_start(self.make_position())),
-            ('!', Some('>'), _) => Some(LtEq::from_span_start(self.make_position())),
-            ('>', _, _) => Some(Gt::from_span_start(self.make_position())),
-            ('<', Some('<'), Some('=')) => Some(LeftShiftEq::from_span_start(self.make_position())),
-            ('<', Some('<'), _) => Some(LeftShift::from_span_start(self.make_position())),
-            ('|', Some('|'), _) => Some(LogicalOr::from_span_start(self.make_position())),
-            ('|', Some('='), _) => Some(OrEq::from_span_start(self.make_position())),
-            ('|', _, _) => Some(Or::from_span_start(self.make_position())),
-            ('<', Some('='), _) => Some(LtEq::from_span_start(self.make_position())),
-            ('!', Some('<'), _) => Some(GtEq::from_span_start(self.make_position())),
-            ('<', _, _) => Some(Lt::from_span_start(self.make_position())),
-            ('-', Some('='), _) => Some(MinusEq::from_span_start(self.make_position())),
-            ('-', _, _) => Some(Minus::from_span_start(self.make_position())),
-            ('!', Some('='), _) => Some(NotEq::from_span_start(self.make_position())),
-            ('!', _, _) => Some(Not::from_span_start(self.make_position())),
-            ('+', Some('='), _) => Some(PlusEq::from_span_start(self.make_position())),
-            ('+', _, _) => Some(Plus::from_span_start(self.make_position())),
-            ('%', Some('='), _) => Some(RemEq::from_span_start(self.make_position())),
-            ('%', _, _) => Some(Rem::from_span_start(self.make_position())),
-            ('/', Some('='), _) => Some(SlashEq::from_span_start(self.make_position())),
-            ('/', _, _) => Some(Slash::from_span_start(self.make_position())),
-            ('*', Some('='), _) => Some(StarEq::from_span_start(self.make_position())),
-            ('*', _, _) => Some(Star::from_span_start(self.make_position())),
-            ('^', Some('='), _) => Some(XorEq::from_span_start(self.make_position())),
-            ('^', _, _) => Some(Xor::from_span_start(self.make_position())),
+            // ('>', Some('>'), Some('=')) => {
+            //     Some(RightShiftEq::from_span_start(self.make_position()))
+            // }
+            // ('>', Some('>'), _) => Some(RightShift::from_span_start(self.make_position())),
+            // ('>', Some('='), _) => Some(GtEq::from_span_start(self.make_position())),
+            // ('!', Some('>'), _) => Some(LtEq::from_span_start(self.make_position())),
+            // ('>', _, _) => Some(Gt::from_span_start(self.make_position())),
+            // ('<', Some('<'), Some('=')) => Some(LeftShiftEq::from_span_start(self.make_position())),
+            // ('<', Some('<'), _) => Some(LeftShift::from_span_start(self.make_position())),
+            // ('|', Some('|'), _) => Some(LogicalOr::from_span_start(self.make_position())),
+            // ('|', Some('='), _) => Some(OrEq::from_span_start(self.make_position())),
+            // ('|', _, _) => Some(Or::from_span_start(self.make_position())),
+            // ('<', Some('='), _) => Some(LtEq::from_span_start(self.make_position())),
+            // ('!', Some('<'), _) => Some(GtEq::from_span_start(self.make_position())),
+            // ('<', _, _) => Some(Lt::from_span_start(self.make_position())),
+            // ('-', Some('='), _) => Some(MinusEq::from_span_start(self.make_position())),
+            // ('-', _, _) => Some(Minus::from_span_start(self.make_position())),
+            // ('!', Some('='), _) => Some(NotEq::from_span_start(self.make_position())),
+            // ('!', _, _) => Some(Not::from_span_start(self.make_position())),
+            // ('+', Some('='), _) => Some(PlusEq::from_span_start(self.make_position())),
+            // ('+', _, _) => Some(Plus::from_span_start(self.make_position())),
+            // ('%', Some('='), _) => Some(RemEq::from_span_start(self.make_position())),
+            // ('%', _, _) => Some(Rem::from_span_start(self.make_position())),
+            // ('/', Some('='), _) => Some(SlashEq::from_span_start(self.make_position())),
+            // ('/', _, _) => Some(Slash::from_span_start(self.make_position())),
+            // ('*', Some('='), _) => Some(StarEq::from_span_start(self.make_position())),
+            // ('*', _, _) => Some(Star::from_span_start(self.make_position())),
+            // ('^', Some('='), _) => Some(XorEq::from_span_start(self.make_position())),
+            // ('^', _, _) => Some(Xor::from_span_start(self.make_position())),
 
             // Whitespace
             ('\r', Some('\n'), _) => {

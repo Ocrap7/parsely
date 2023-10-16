@@ -1,17 +1,15 @@
 use parsely_lexer::tokens::{self, Group, Token};
 
-use crate::{dummy::Dummy, Parse, Result};
-use parsely_diagnostics::Diagnostic;
+use crate::{Parse, ParseError, Result};
 
 macro_rules! impl_token_parse {
     ($($struct_name:ident),*, $(,)*) => {
         $(
             impl Parse for tokens::$struct_name {
-                fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
+                fn parse(stream: &'_ crate::ParseStream<'_>) -> Result<Self> {
                     match stream.peek()? {
                         Token::$struct_name(a) => Ok(stream.next_ref(a)),
-                        // _ => Err(tokens::$struct_name::new_dummy(stream.current_position())),
-                        tok => Err(Diagnostic::UnexpectedToken {
+                        tok => Err(ParseError::UnexpectedToken {
                             found: tok.clone(),
                             expected: tokens::$struct_name::NAME.to_string(),
                         }),
@@ -23,31 +21,8 @@ macro_rules! impl_token_parse {
 }
 
 impl_token_parse! {
-    Let,
-    Mut,
-    Type,
-    Module,
-    If,
-    Then,
-    Else,
-    Loop,
-    Do,
-    Of,
-    In,
-    True,
-    False,
-    Nones,
-    Match,
-    With,
-    Export,
-    Import,
-    Const,
-    Inline,
-    Internal,
-    Persist,
-    Return,
-    Break,
-    Continue,
+    Parameters,
+    Template,
 
     // Punctuation
     Semi,
@@ -104,8 +79,8 @@ impl_token_parse! {
 }
 
 impl Parse for Token {
-    fn parse(stream: &'_ mut crate::ParseStream) -> Result<Self> {
-        stream.next()
+    fn parse(stream: &'_ crate::ParseStream<'_>) -> Result<Self> {
+        Ok(stream.next())
     }
 }
 

@@ -4,62 +4,73 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 
-use hover::HoverProvider;
+// use hover::HoverProvider;
+use parsely_analysis::{Analyzer, EnumResolves, enum_resolves};
 use parsely_diagnostics::{DiagnosticFmt, DiagnosticLevel};
-use parsely_gen_asm::module::Module;
-use parsely_gen_asm::pack::Pack;
+use parsely_gen_ts::module::{Config, Module};
+// use parsely_gen_ts::module::Module;
+// use parsely_gen_ts::pack::Pack;
 use parsely_lexer::{Lexer, Span};
 use parsely_parser::program::Program;
 use semantic_tokens::{SemanticGenerator, STOKEN_MODIFIERS, STOKEN_TYPES};
 
-use signature::SignatureProvider;
+// use signature::SignatureProvider;
 use tokio::net::TcpListener;
 use tower_lsp::jsonrpc::{Error, ErrorCode, Result};
 use tower_lsp::{lsp_types::*, LanguageServer};
 use tower_lsp::{Client, LspService, Server};
 
-mod goto;
-mod hover;
+// mod goto;
+// mod hover;
 mod semantic_tokens;
-mod signature;
+// mod signature;
 
 pub struct Backend {
-    documents: RwLock<HashMap<Url, (Module, Program)>>,
+    documents: RwLock<HashMap<Url, Program>>,
     completions: RwLock<HashMap<Url, Vec<(CompletionItem, Span)>>>,
+    resolves: EnumResolves<'static>,
 
     client: Arc<Client>,
 }
 
-const PACK: &str = include_str!("../../../examples/specfile.toml");
+// const PACK: &str = include_str!("../../../examples/specfile.toml");
 
-fn compile_file(name: &str, input: &str, pack: Arc<Pack>) -> io::Result<(Module, Program)> {
+fn compile_file(
+    name: &str,
+    input: &str,
+) -> io::Result<(Vec<parsely_diagnostics::Diagnostic>, Program)> {
     let tokens = Lexer::run(input.as_bytes());
-    let (program, diagnostics) = Program::new(&input, input.to_string(), tokens)
+    let program = Program::new(&input, input.to_string(), tokens)
         .parse()
         .unwrap();
 
-    let module = Module::run_new(name, &program, pack, diagnostics).unwrap();
+    let mut analyzer = Analyzer::new();
+    analyzer.run(&program);
 
-    Ok((module, program))
+    // let module = Module::run_new(
+    //     name,
+    //     &program,
+    //     &Config {
+    //         context_path: PathBuf::from_str(".").unwrap().into_boxed_path(),
+    //     },
+    // )
+    // .unwrap();
+
+    let diagnostics = analyzer
+        .diagnostics;
+        // .into_iter()
+        // .chain(module.diagnostics.into_iter())
+        // .collect();
+
+    Ok((diagnostics, program))
 }
 
 impl Backend {
-    fn compile_document(
-        pack: Arc<Pack>,
-        input: &str,
-        path: &Path,
-    ) -> (Module, Program, Vec<Diagnostic>) {
-        let (module, program) = compile_file(
-            path.file_stem().unwrap().to_string_lossy().as_ref(),
-            &input,
-            pack,
-        )
-        .unwrap();
+    fn compile_document(input: &str, path: &Path) -> (Program, Vec<Diagnostic>) {
+        let (diagnostics, program) =
+            compile_file(path.file_stem().unwrap().to_string_lossy().as_ref(), &input).unwrap();
 
-        println!("{:?}", program.items);
-
-        let diags = module
-            .diagnostics()
+        let diags = diagnostics
             .iter()
             .map(|diag| Diagnostic {
                 range: to_rng(&diag.primary_span()),
@@ -81,9 +92,7 @@ impl Backend {
             })
             .collect::<Vec<_>>();
 
-        println!("{:#?}", diags);
-
-        (module, program, diags)
+        (program, diags)
     }
 }
 
@@ -146,9 +155,9 @@ impl LanguageServer for Backend {
         let tokens = {
             let document = self.documents.read().unwrap();
             let mut completions = self.completions.write().unwrap();
-            let (module, program) = document.get(&params.text_document.uri).unwrap();
+            let program = document.get(&params.text_document.uri).unwrap();
 
-            let mut gen = SemanticGenerator::new(module);
+            let mut gen = SemanticGenerator::new(&self.resolves);
 
             gen.run(&program);
 
@@ -158,7 +167,6 @@ impl LanguageServer for Backend {
 
             tokens
         };
-        // let tokens = gen.finish();
 
         self.client
             .log_message(MessageType::INFO, format!("toks: {tokens:?}"))
@@ -177,57 +185,57 @@ impl LanguageServer for Backend {
         Ok(None)
     }
 
-    async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        let Ok(document) = self.documents.read() else {
-            return Err(Error::new(ErrorCode::InternalError))
-        };
+    // async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
+    //     let Ok(document) = self.documents.read() else {
+    //         return Err(Error::new(ErrorCode::InternalError))
+    //     };
 
-        let Some((module, program)) = document.get(&params.text_document_position_params.text_document.uri) else {
-            return Err(Error::new(ErrorCode::InvalidParams))
-        };
+    //     let Some((module, program)) = document.get(&params.text_document_position_params.text_document.uri) else {
+    //         return Err(Error::new(ErrorCode::InvalidParams))
+    //     };
 
-        let position = parsely_lexer::Position {
-            line: params.text_document_position_params.position.line as usize,
-            column: params.text_document_position_params.position.character as usize,
-        };
+    //     let position = parsely_lexer::Position {
+    //         line: params.text_document_position_params.position.line as usize,
+    //         column: params.text_document_position_params.position.character as usize,
+    //     };
 
-        let provder = HoverProvider::new(module);
-        let hover = provder.run(program, &position);
+    //     let provder = HoverProvider::new(module);
+    //     let hover = provder.run(program, &position);
 
-        match hover {
-            Some(Some(hover)) => Ok(Some(hover)),
-            Some(None) => Ok(None), // store in none cache
-            None => Ok(None),
-        }
-    }
+    //     match hover {
+    //         Some(Some(hover)) => Ok(Some(hover)),
+    //         Some(None) => Ok(None), // store in none cache
+    //         None => Ok(None),
+    //     }
+    // }
 
-    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
-        let Ok(document) = self.documents.read() else {
-            return Err(Error::new(ErrorCode::InternalError))
-        };
+    // async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+    //     let Ok(document) = self.documents.read() else {
+    //         return Err(Error::new(ErrorCode::InternalError))
+    //     };
 
-        let Some((module, program)) = document.get(&params.text_document_position_params.text_document.uri) else {
-            return Err(Error::new(ErrorCode::InvalidParams))
-        };
+    //     let Some((module, program)) = document.get(&params.text_document_position_params.text_document.uri) else {
+    //         return Err(Error::new(ErrorCode::InvalidParams))
+    //     };
 
-        let position = parsely_lexer::Position {
-            line: params.text_document_position_params.position.line as usize,
-            column: params.text_document_position_params.position.character as usize,
-        };
+    //     let position = parsely_lexer::Position {
+    //         line: params.text_document_position_params.position.line as usize,
+    //         column: params.text_document_position_params.position.character as usize,
+    //     };
 
-        let provder = SignatureProvider::new(module);
-        let signature = provder.run(program, &position);
+    //     let provder = SignatureProvider::new(module);
+    //     let signature = provder.run(program, &position);
 
-        match signature {
-            Some(Some(signature)) => Ok(Some(SignatureHelp {
-                signatures: vec![signature],
-                active_signature: Some(0),
-                active_parameter: None,
-            })),
-            Some(None) => Ok(None), // store in none cache
-            None => Ok(None),
-        }
-    }
+    //     match signature {
+    //         Some(Some(signature)) => Ok(Some(SignatureHelp {
+    //             signatures: vec![signature],
+    //             active_signature: Some(0),
+    //             active_parameter: None,
+    //         })),
+    //         Some(None) => Ok(None), // store in none cache
+    //         None => Ok(None),
+    //     }
+    // }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
         let completions = self.completions.read().unwrap();
@@ -263,10 +271,6 @@ impl LanguageServer for Backend {
             .log_message(MessageType::INFO, "server opwen!")
             .await;
 
-        let pack = parsely_gen_asm::toml::from_str(PACK).unwrap();
-        let pack = Arc::new(pack);
-
-        println!("{pack:#?}");
 
         let (path, diagnostics) = {
             let mut docs = self.documents.write().unwrap();
@@ -274,10 +278,10 @@ impl LanguageServer for Backend {
 
             let path_buf = PathBuf::from_str(path.as_str()).unwrap();
 
-            let (module, program, diagnostics) =
-                Backend::compile_document(pack, &params.text_document.text, &path_buf);
+            let (program, diagnostics) =
+                Backend::compile_document(&params.text_document.text, &path_buf);
 
-            docs.insert(path.clone(), (module, program));
+            docs.insert(path.clone(), program);
 
             (path, diagnostics)
         };
@@ -298,16 +302,15 @@ impl LanguageServer for Backend {
             let mut document = self.documents.write().unwrap();
             let path = params.text_document.uri.clone();
 
-            let (doc_module, doc_program) = document.get_mut(&path).unwrap();
+            let doc_program = document.get_mut(&path).unwrap();
             let path_buf = PathBuf::from_str(path.as_str()).unwrap();
 
             for change in params.content_changes {
-                let (module, program, mut diags) =
-                    Backend::compile_document(doc_module.pack.clone(), &change.text, &path_buf);
+                let (program, mut diags) =
+                    Backend::compile_document(&change.text, &path_buf);
 
                 diags_accum.append(&mut diags);
 
-                *doc_module = module;
                 *doc_program = program;
             }
 
@@ -359,6 +362,7 @@ async fn main() {
         Backend {
             documents: RwLock::new(HashMap::new()),
             completions: RwLock::new(HashMap::new()),
+            resolves: enum_resolves(),
             client,
         }
     });

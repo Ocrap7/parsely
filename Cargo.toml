@@ -1,11 +1,11 @@
 [workspace]
 members = [
     "parsely_lexer",
-    "parsely_ast",
-    "parsely_parser_failsafe",
+    "parsely_parser",
     "parsely_diagnostics",
     "parsely_macros",
-    "parsely_gen",
+    "parsely_gen_ts",
+    "parsely_analysis",
     "parsely",
     "parsely_lsp/lsp_server",
 ]

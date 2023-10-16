@@ -1,13 +1,12 @@
-use parsely_gen_asm::{module::Module, value::SymbolValue};
+use parsely_analysis::{EnumResolves, Type};
 use parsely_lexer::{AsSpan, Span};
 use parsely_parser::{
     expression::{Expression, Literal},
-    item::{BoundValue, Item, Op},
+    item::{Argument, Element, ElementBody, Item},
     program::Program,
 };
 use tower_lsp::lsp_types::{
-    CompletionItem, CompletionItemKind, Documentation, MarkupContent, SemanticToken,
-    SemanticTokenModifier, SemanticTokenType,
+    CompletionItem, SemanticToken, SemanticTokenModifier, SemanticTokenType,
 };
 
 macro_rules! define_types {
@@ -143,21 +142,21 @@ macro_rules! brr {
             };
         }
 pub struct SemanticGenerator<'a> {
-    module: &'a Module,
+    resolves: &'a EnumResolves<'static>,
     tokens: SemanticTokenBuilder,
     completes: Vec<(CompletionItem, Span)>,
 }
 
 impl<'a> SemanticGenerator<'a> {
-    pub fn new(module: &'a Module) -> Self {
+    pub fn new(resolves: &'a EnumResolves<'static>) -> Self {
         Self {
-            module,
+            resolves,
             tokens: SemanticTokenBuilder::default(),
             completes: Vec::new(),
         }
     }
 
-    pub fn run(&mut self, program: &Program) {
+    pub fn run<'b>(&mut self, program: &'b Program) {
         for item in program.items.iter() {
             self.run_item(item);
         }
@@ -166,253 +165,74 @@ impl<'a> SemanticGenerator<'a> {
     pub fn finish(self) -> (Vec<SemanticToken>, Vec<(CompletionItem, Span)>) {
         (self.tokens.tokens, self.completes)
     }
-
-    fn complete_registers(&self, span: Span) -> Vec<(CompletionItem, Span)> {
-        self.module
-            .pack
-            .registers
-            .keys()
-            .map(|instr| {
-                (
-                    CompletionItem {
-                        label: instr.clone(),
-                        kind: Some(CompletionItemKind::FIELD),
-                        // sort_text
-                        ..Default::default()
-                    },
-                    span,
-                )
-            })
-            .collect()
-    }
-
-    fn complete_instructions(&self, span: Span) -> Vec<(CompletionItem, Span)> {
-        self.module
-            .pack
-            .instructions
-            .keys()
-            .map(|instr| {
-                (
-                    CompletionItem {
-                        label: instr.clone(),
-                        kind: Some(CompletionItemKind::KEYWORD),
-                        ..Default::default()
-                    },
-                    span,
-                )
-            })
-            .collect()
-    }
 }
 
 impl SemanticGenerator<'_> {
-    fn run_item(&mut self, item: &Item) {
+    pub fn run_item<'b>(&mut self, item: &'b Item) {
         match item {
-            Item::Binding(bind) => {
-                self.tokens
-                    .push_token(&bind.let_tok, semantic_type![KEYWORD], 0);
-
-                // self.completes.push((
-                //     CompletionItem {
-                //         label: "poo".to_string(),
-                //         ..Default::default()
-                //     },
-                //     bind.let_tok.as_span().join(bind.semi_tok.as_span()),
-                // ));
-
-                match &bind.value {
-                    BoundValue::Expression(expr) => {
-                        self.tokens.push_token(
-                            &bind.ident,
-                            semantic_type![VARIABLE],
-                            semantic_mod![CONST],
-                        );
-
-                        self.run_expr(expr);
-                    }
-                    BoundValue::OpList(op) => {
-                        self.tokens
-                            .push_token(&bind.ident, semantic_type![FUNCTION], 0);
-
-                        for (op, span) in op.list.iter().zip(
-                            op.list
-                                .iter_punct()
-                                .map(|f| f.as_span())
-                                .chain([bind.semi_tok.as_span()].into_iter()),
-                        ) {
-                            self.run_op(op, span);
-                        }
-
-                        let eq = bind.eq_tok.as_span();
-                        let first = op
-                            .list
-                            .iter()
-                            .next()
-                            .map_or(bind.semi_tok.as_span(), |f| f.op.span);
-
-                        // iterates ranges between operator lists and between equals token and first op (or semi)
-                        for (this, next) in [(eq, first)].into_iter().chain(
-                            op.list.iter_punct().map(|p| p.as_span()).zip(
-                                op.list
-                                    .iter()
-                                    .skip(1)
-                                    .map(|f| f.op.as_span())
-                                    .chain([bind.semi_tok.as_span()]),
-                            ),
-                        ) {
-                            self.completes
-                                .extend(self.complete_instructions(this.increment().join(next)));
-                        }
+            Item::Element(elem) => {
+                if let Some(args) = &elem.args {
+                    for arg in args.0.value.iter() {
+                        self.run_argument(elem, arg)
                     }
                 }
+
+                match &elem.body {
+                    ElementBody::Children(children) => {
+                        for child in children.value.iter() {
+                            self.run_item(child)
+                        }
+                    }
+                    ElementBody::Child(_) => {}
+                }
             }
-            Item::Attribute(attr) => {
-                self.run_expr(&attr.value.value);
-            }
-            _ => todo!(),
+            Item::Expression(expr) => {}
+            Item::Inputs(_) => {}
         }
     }
 
-    fn run_op(&mut self, op: &Op, next_span: Span) {
-        // Only add semantic value if operation is defined in pack
-        if self.module.pack.instructions.contains_key(&op.op.value) {
-            self.tokens.push_token(&op.op, semantic_type![KEYWORD], 0);
-        }
+    pub fn run_argument<'b>(&mut self, element: &'b Element, arg: &'b Argument) {
+        let Some(attrs) = self.resolves.get(&element.tag.value) else {
+            return;
+        };
 
-        // self.completes
-        //     .extend(self.complete_registers(op.args.as_span()));
+        let Some(ty) = attrs.get(&arg.key.value) else {
+            return;
+        };
 
-        if let Some(instruction) = self.module.pack.instructions.get(&op.op.value) {
-            let tys = instruction.get_types(
-                &self.module.pack,
-                &op.op.value,
-                &op.args,
-                op.op.as_span(),
-                next_span,
-            );
+        let Some((_, expr)) = &arg.value else {
+            return;
+        };
 
-            let tys: Vec<_> = tys
-                .into_iter()
-                .filter_map(|(ty, _, span)| match ty {
-                    "reg" => Some(self.complete_registers(span)),
-                    "imm" => Some(
-                        self.module
-                            .iter_symbols()
-                            .filter(|(_, sym)| match sym.value {
-                                SymbolValue::Poison | SymbolValue::Function() => false,
-                                _ => true,
-                            })
-                            .map(|(name, sym)| {
-                                (
-                                    CompletionItem {
-                                        label: name.clone(),
-                                        kind: Some(CompletionItemKind::CONSTANT),
-                                        detail: Some(sym.value.type_str().to_string()),
-                                        documentation: Some(Documentation::MarkupContent(
-                                            MarkupContent {
-                                                kind: tower_lsp::lsp_types::MarkupKind::Markdown,
-                                                value: format!(
-                                                    "Constant `{}` of type `{}` with value `{}`.\n{} usages",
-                                                    name,
-                                                    sym.value.type_str(),
-                                                    sym.value,
-                                                    sym.usages.load(std::sync::atomic::Ordering::SeqCst),
-                                                )
-                                            }
-                                        )),
-                                        ..Default::default()
-                                    },
-                                    span,
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    ),
-                    //Some(
-                    // (brr! {
-                    //     TEXT,
-                    //     METHOD,
-                    //     FUNCTION,
-                    //     CONSTRUCTOR,
-                    //     FIELD,
-                    //     VARIABLE,
-                    //     CLASS,
-                    //     INTERFACE,
-                    //     MODULE,
-                    //     PROPERTY,
-                    //     UNIT,
-                    //     VALUE,
-                    //     ENUM,
-                    //     KEYWORD,
-                    //     SNIPPET,
-                    //     COLOR,
-                    //     FILE,
-                    //     REFERENCE,
-                    //     FOLDER,
-                    //     ENUM_MEMBER,
-                    //     CONSTANT,
-                    //     STRUCT,
-                    //     EVENT,
-                    //     OPERATOR,
-                    //     TYPE_PARAMETER
-                    // })
-                    // .into_iter()
-                    // .map(|k| {
-                    //     (
-                    //         CompletionItem {
-                    //             label: k.1.to_ascii_lowercase(),
-                    //             kind: Some(k.0),
-                    //             ..Default::default()
-                    //         },
-                    //         span,
-                    //     )
-                    // })
-                    // .collect(),
-                    // vec![(
-                    //     CompletionItem {
-                    //         label: "Some constant".to_string(),
-                    //         ..Default::default()
-                    //     },
-                    //     span,
-                    // )],
-                    //),
-                    _ => None,
-                })
-                // .inspect(|f| {
-                //     println!("Items ({}): ", op.op.value);
-                //     f.iter().for_each(|f| {
-                //         println!("{} {}", f.0.label, f.1);
-                //     });
-                //     println!();
-                // })
-                .flatten()
-                .collect();
+        let ty = ty.clone();
+        let expr_ty = self.run_expression(&expr);
 
-            self.completes.extend(tys);
-        }
+        if expr_ty.matches(&ty) {
+            match ty {
+                Type::Enum(_) => {
+                    let span = match expr.as_ref() {
+                        Expression::Enum(en) => en.ident.as_span(),
+                        _ => panic!(),
+                    };
 
-        self.run_expr(&op.args);
-    }
-
-    fn run_expr(&mut self, expr: &Expression) {
-        match expr {
-            Expression::Ident(ident) => {
-                if self.module.pack.registers.contains_key(&ident.value) {
-                    self.tokens.push_token(ident, semantic_type![TYPE], 0);
-                } else if let Ok(sym) = self.module.find_symbol(ident) {
                     self.tokens
-                        .push_token(ident, semantic_type![VARIABLE], semantic_mod!(CONST))
+                        .push_token(&span, semantic_type![ENUM_MEMBER], 0);
                 }
+                _ => (),
             }
-            Expression::BinOp(bin_op) => {
-                self.run_expr(&bin_op.left);
-                self.run_expr(&bin_op.right);
-            }
+        }
+    }
+
+    pub fn run_expression<'b>(&mut self, expr: &'b Expression) -> Type<'b> {
+        match expr {
+            Expression::ArrayInit(_) => Type::Array,
+            Expression::Enum(e) => Type::EnumMember(e.ident.value.as_str().into()),
             Expression::Literal(lit) => match lit {
-                Literal::Int(i) => self.tokens.push_token(&i.value, semantic_type![NUMBER], 0),
-                Literal::Float(i) => self.tokens.push_token(&i.value, semantic_type![NUMBER], 0),
-                Literal::String(i) => self.tokens.push_token(&i.value, semantic_type![STRING], 0),
+                Literal::Int(_) | Literal::Float(_) => Type::Number,
+                Literal::String(_) => Type::String,
             },
-            _ => (),
+            Expression::Template(_) => Type::String,
+            Expression::Ident(_) => Type::Empty,
         }
     }
 }

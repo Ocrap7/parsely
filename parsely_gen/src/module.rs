@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write};
+use std::{fs::File, io::Write, path::Path};
 
 use inkwell::targets::{
     CodeModel, InitializationConfig, RelocMode, Target, TargetData, TargetMachine,
@@ -86,6 +86,8 @@ impl<'ctx> Module<'ctx> {
                 let fmtr = DiagnosticFmt(&module.errors, &module, program);
                 println!("{}", fmtr);
 
+                // module.module.wr
+                module.target_machine.write_to_file(&module.module, inkwell::targets::FileType::Object, &Path::new("out.o")).unwrap();
                 let mut file = File::create("out.ll").unwrap();
                 write!(file, "{}", output).unwrap();
                 file.flush().unwrap();

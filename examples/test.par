@@ -1,4 +1,5 @@
 define a function called "calc" with output of type integer that evaluates the value 20
+define a function called "main" with output of type integer that evaluates the value 20
 
 define a function called "foo"
     with inputs 

@@ -10,6 +10,6 @@ parsely-lexer = { path = "../parsely_lexer" }
 parsely-parser = { path = "../parsely_parser" }
 thiserror = "1.0.44"
 
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm15-0", "llvm15-0-force-dynamic"] }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm16-0", "target-x86"], default-features = false }
 bitflags = "2.3.3"
 colored = "2.0.4"
